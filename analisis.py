@@ -1,7 +1,7 @@
 # %%
 import ply.lex as lex
 import ply.yacc as yacc
-from arbol import Literal, Calculator, BinaryOp, Visitor
+from arbol import Literal, BinaryOp, Visitor, Variable, UnaryOp, WhileStatement, IfStatement, Block, Assignment, Declaration, Program
 
 literals = ['+','-','*','/', '%', '(', ')', '{', '}', ';', '=']
 reserved = {
@@ -51,67 +51,6 @@ def t_error(t):
     print(f"Illegal character '{t.value[0]}'")
     t.lexer.skip(1)
 
-#%%
-class Variable:
-    def __init__(self, name):
-        self.name = name
-
-    def accept(self, visitor):
-        visitor.visit_variable(self)
-
-class UnaryOp:
-    def __init__(self, op, operand):
-        self.op = op
-        self.operand = operand
-
-    def accept(self, visitor):
-        visitor.visit_unary_op(self)
-
-class WhileStatement:
-    def __init__(self, condition, statement):
-        self.condition = condition
-        self.statement = statement
-
-    def accept(self, visitor):
-        visitor.visit_while_statement(self)
-
-class IfStatement:
-    def __init__(self, condition, then_stmt, else_stmt=None):
-        self.condition = condition
-        self.then_stmt = then_stmt
-        self.else_stmt = else_stmt
-
-    def accept(self, visitor):
-        visitor.visit_if_statement(self)
-
-class Block:
-    def __init__(self, statements):
-        self.statements = statements
-
-    def accept(self, visitor):
-        visitor.visit_block(self)
-
-class Assignment:
-    def __init__(self, identifier, expression):
-        self.identifier = identifier
-        self.expression = expression
-
-    def accept(self, visitor):
-        visitor.visit_assignment(self)
-        
-class Declaration:
-    def __init__(self, typ, identifier):
-        self.typ = typ
-        self.identifier = identifier
-    def accept(self, visitor):
-        visitor.visit_declaration(self)
-
-class Program:
-    def __init__(self, declarations, statements):
-        self.declarations = declarations
-        self.statements   = statements
-    def accept(self, visitor):
-        visitor.visit_program(self)
 # %%
 
 precedence = (
@@ -333,16 +272,11 @@ parser = yacc.yacc(start='program')
 ast = parser.parse(data)
 
 # %%
-# visitor = Calculator()
-# ast.accept(visitor)
-# print(visitor.stack)
-# %%
 from llvmlite import ir
 
 intType = ir.IntType(32)
 module = ir.Module(name="prog")
 
-# int main() {
 fnty = ir.FunctionType(intType, [])
 func = ir.Function(module, fnty, name='main')
 

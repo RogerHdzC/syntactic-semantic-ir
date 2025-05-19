@@ -84,3 +84,64 @@ class Calculator(Visitor):
             self.stack.append(lhs or rhs)
         elif node.op == '&&':
             self.stack.append(lhs and rhs)
+            
+class Variable:
+    def __init__(self, name):
+        self.name = name
+
+    def accept(self, visitor):
+        visitor.visit_variable(self)
+
+class UnaryOp:
+    def __init__(self, op, operand):
+        self.op = op
+        self.operand = operand
+
+    def accept(self, visitor):
+        visitor.visit_unary_op(self)
+
+class WhileStatement:
+    def __init__(self, condition, statement):
+        self.condition = condition
+        self.statement = statement
+
+    def accept(self, visitor):
+        visitor.visit_while_statement(self)
+
+class IfStatement:
+    def __init__(self, condition, then_stmt, else_stmt=None):
+        self.condition = condition
+        self.then_stmt = then_stmt
+        self.else_stmt = else_stmt
+
+    def accept(self, visitor):
+        visitor.visit_if_statement(self)
+
+class Block:
+    def __init__(self, statements):
+        self.statements = statements
+
+    def accept(self, visitor):
+        visitor.visit_block(self)
+
+class Assignment:
+    def __init__(self, identifier, expression):
+        self.identifier = identifier
+        self.expression = expression
+
+    def accept(self, visitor):
+        visitor.visit_assignment(self)
+        
+class Declaration:
+    def __init__(self, typ, identifier):
+        self.typ = typ
+        self.identifier = identifier
+    def accept(self, visitor):
+        visitor.visit_declaration(self)
+
+class Program:
+    def __init__(self, declarations, statements):
+        self.declarations = declarations
+        self.statements   = statements
+    def accept(self, visitor):
+        visitor.visit_program(self)

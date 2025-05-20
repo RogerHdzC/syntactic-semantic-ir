@@ -1,81 +1,116 @@
 # %%
 import ply.lex as lex
 import ply.yacc as yacc
-from arbol import Literal, BinaryOp, Visitor, Variable, UnaryOp, WhileStatement, DoWhileStatement, ForStatement, IfStatement, Block, Assignment, Declaration, Program
+from arbol import (
+    Literal,
+    BinaryOp,
+    Visitor,
+    Variable,
+    UnaryOp,
+    WhileStatement,
+    DoWhileStatement,
+    ForStatement,
+    IfStatement,
+    Block,
+    Assignment,
+    Declaration,
+    Program,
+)
 
-literals = ['+','-','*','/', '%', '(', ')', '{', '}', ';', '=']
+literals = ["+", "-", "*", "/", "%", "(", ")", "{", "}", ";", "="]
 reserved = {
-    'while': 'WHILE',
-    'if':    'IF',
-    'else':  'ELSE',
-    'int':   'INT',
-    'bool':  'BOOL',
-    'float': 'FLOAT',
-    'char':  'CHAR',
-    'main':  'MAIN',
-    'do':    'DO',
-    'for':   'FOR',
+    "while": "WHILE",
+    "if": "IF",
+    "else": "ELSE",
+    "int": "INT",
+    "bool": "BOOL",
+    "float": "FLOAT",
+    "char": "CHAR",
+    "main": "MAIN",
+    "do": "DO",
+    "for": "FOR",
 }
 tokens = [
-    'INTLIT', 'ID', 'OR', 'AND', 'LEQ', 'GEQ', 'LT', 'GT',
-    'EQ', 'NEQ', 'MINUS', 'PLUS', 'NOT',
+    "INTLIT",
+    "ID",
+    "OR",
+    "AND",
+    "LEQ",
+    "GEQ",
+    "LT",
+    "GT",
+    "EQ",
+    "NEQ",
+    "MINUS",
+    "PLUS",
+    "NOT",
 ] + list(reserved.values())
 
-t_ignore  = ' \t'
+t_ignore = " \t"
+
 
 def t_ID(t):
-    r'[a-zA-Z_][a-zA-Z_0-9]*'
-    t.type = reserved.get(t.value, 'ID')
+    r"[a-zA-Z_][a-zA-Z_0-9]*"
+    t.type = reserved.get(t.value, "ID")
     return t
 
+
 def t_INTLIT(t):
-    r'[0-9]+'
+    r"[0-9]+"
     t.value = int(t.value)
     return t
 
+
 def t_newline(t):
-    r'\n+'
+    r"\n+"
     t.lexer.lineno += len(t.value)
 
-t_OR = r'\|\|'
-t_AND = r'&&'
-t_LT = r'<'
-t_LEQ = r'<='
-t_GT = r'>'
-t_GEQ = r'>='
-t_EQ = r'=='
-t_NEQ = r'!='
-t_MINUS = r'-'
-t_NOT = r'!'
-t_PLUS = r'\+'
+
+t_OR = r"\|\|"
+t_AND = r"&&"
+t_LT = r"<"
+t_LEQ = r"<="
+t_GT = r">"
+t_GEQ = r">="
+t_EQ = r"=="
+t_NEQ = r"!="
+t_MINUS = r"-"
+t_NOT = r"!"
+t_PLUS = r"\+"
+
 
 def t_error(t):
     print(f"Illegal character '{t.value[0]}'")
     t.lexer.skip(1)
 
+
 # %%
 
 precedence = (
-    ('nonassoc', 'ELSE'),
-    ('right', 'NOT', 'UMINUS'),
-    ('left',  'OR'),
-    ('left',  'AND'),
-    ('nonassoc', 'EQ', 'NEQ'),
-    ('nonassoc', 'LT', 'LEQ', 'GT', 'GEQ'),
-    ('left',  'PLUS', 'MINUS'),
-    ('left',  '*', '/', '%'),
+    ("nonassoc", "ELSE"),
+    ("right", "NOT", "UMINUS"),
+    ("left", "OR"),
+    ("left", "AND"),
+    ("nonassoc", "EQ", "NEQ"),
+    ("nonassoc", "LT", "LEQ", "GT", "GEQ"),
+    ("left", "PLUS", "MINUS"),
+    ("left", "*", "/", "%"),
 )
+
+
 def p_empty(p):
     """
     empty :
     """
     p[0] = []
 
+
 def p_program(p):
     """
     program : INT MAIN "(" ")" "{" declarations statements "}"
     """
     p[0] = Program(p[6], p[7])
+
 
 def p_declarations(p):
     """
@@ -87,11 +122,13 @@ def p_declarations(p):
     else:
         p[0] = []
 
+
 def p_declaration(p):
     """
     declaration : type ID ";"
     """
     p[0] = Declaration(p[1], p[2])
+
 
 def p_type(p):
     """
@@ -101,6 +138,7 @@ def p_type(p):
          | CHAR
     """
     p[0] = p.slice[1].type
+
 
 def p_statements(p):
     """
@@ -125,11 +163,13 @@ def p_statement(p):
     """
     p[0] = p[1]
 
+
 def p_block(p):
     """
-    block : '{' statements '}' 
+    block : '{' statements '}'
     """
     p[0] = Block(p[2])
+
 
 def p_assignment_no_semi(p):
     """
@@ -137,18 +177,21 @@ def p_assignment_no_semi(p):
     """
     p[0] = Assignment(p[1], p[3])
 
+
 def p_assignment(p):
     """
     assignment : assignment_no_semi ';'
     """
     p[0] = p[1]
 
+
 def p_assignment_opt(p):
     """
-    assignment_opt : assignment_no_semi 
+    assignment_opt : assignment_no_semi
                    | empty
     """
     p[0] = p[1]
+
 
 def p_if_statement(p):
     """
@@ -160,6 +203,7 @@ def p_if_statement(p):
     else:
         p[0] = IfStatement(p[3], p[5], None)
 
+
 def p_for_statement(p):
     """
     for_statement : FOR '(' assignment_opt ';' expression_opt ';' assignment_opt ')' statement
@@ -170,18 +214,21 @@ def p_for_statement(p):
     body = p[9]
     p[0] = ForStatement(init, cond, post, body)
 
+
 def p_do_while_statement(p):
     """
     do_while_statement : DO statement WHILE '(' expression ')' ';'
     """
     p[0] = DoWhileStatement(p[5], p[2])
 
+
 def p_while_statement(p):
     """
     while_statement : WHILE '(' expression ')' statement
     """
-    
+
     p[0] = WhileStatement(p[3], p[5])
+
 
 def p_expression_opt(p):
     """
@@ -190,9 +237,10 @@ def p_expression_opt(p):
     """
     p[0] = p[1]
 
+
 def p_expression(p):
-    """ 
-    expression : expression OR conjunction 
+    """
+    expression : expression OR conjunction
                | conjunction
     """
     if len(p) == 2:
@@ -200,9 +248,10 @@ def p_expression(p):
     else:
         p[0] = BinaryOp(p[2], p[1], p[3])
 
+
 def p_conjunction(p):
-    """ 
-    conjunction : conjunction AND equality 
+    """
+    conjunction : conjunction AND equality
                 | equality
     """
     if len(p) == 2:
@@ -210,9 +259,10 @@ def p_conjunction(p):
     else:
         p[0] = BinaryOp(p[2], p[1], p[3])
 
+
 def p_equality(p):
-    """ 
-    equality : relation equ_op relation 
+    """
+    equality : relation equ_op relation
              | relation
     """
     if len(p) == 2:
@@ -220,16 +270,18 @@ def p_equality(p):
     else:
         p[0] = BinaryOp(p[2], p[1], p[3])
 
+
 def p_equ_op(p):
-    """ 
-    equ_op : EQ 
+    """
+    equ_op : EQ
            | NEQ
     """
     p[0] = p[1]
 
+
 def p_relation(p):
-    """ 
-    relation : addition rel_op addition 
+    """
+    relation : addition rel_op addition
              | addition
     """
     if len(p) == 2:
@@ -237,18 +289,20 @@ def p_relation(p):
     else:
         p[0] = BinaryOp(p[2], p[1], p[3])
 
+
 def p_rel_op(p):
-    """ 
-    rel_op : LT 
+    """
+    rel_op : LT
            | LEQ
-           | GT 
+           | GT
            | GEQ
     """
     p[0] = p[1]
 
+
 def p_addition(p):
-    """ 
-    addition : addition add_op term 
+    """
+    addition : addition add_op term
              | term
     """
     if len(p) == 2:
@@ -256,16 +310,18 @@ def p_addition(p):
     else:
         p[0] = BinaryOp(p[2], p[1], p[3])
 
+
 def p_add_op(p):
-    """ 
-    add_op : PLUS 
+    """
+    add_op : PLUS
            | MINUS
     """
     p[0] = p[1]
 
+
 def p_term(p):
-    """ 
-    term : term mul_op factor 
+    """
+    term : term mul_op factor
          | factor
     """
     if len(p) == 2:
@@ -273,13 +329,15 @@ def p_term(p):
     else:
         p[0] = BinaryOp(p[2], p[1], p[3])
 
+
 def p_mul_op(p):
-    """ 
-    mul_op : '*' 
-           | '/' 
+    """
+    mul_op : '*'
+           | '/'
            | '%'
     """
     p[0] = p[1]
+
 
 def p_factor(p):
     """
@@ -290,10 +348,11 @@ def p_factor(p):
         p[0] = p[1]
     else:
         p[0] = UnaryOp(p[1], p[2])
-    
+
+
 def p_unary_op(p):
     """unary_op : MINUS %prec UMINUS
-                | NOT   %prec NOT"""
+    | NOT   %prec NOT"""
     p[0] = p[1]
 
 
@@ -305,14 +364,16 @@ def p_primary(p):
     """
     if len(p) == 2:
         if isinstance(p[1], int):
-            p[0] = Literal(p[1], 'INT')
+            p[0] = Literal(p[1], "INT")
         else:
             p[0] = Variable(p[1])
     else:
         p[0] = p[2]
-    
+
+
 def p_error(p):
     print(f"Syntax error at '{p.value}'")
+
 
 # %%
 data = """
@@ -331,8 +392,8 @@ int main() {
   for (i = 0; i < 10; i = i + 1) {x = x + i;}
 }
 """
-lexer  = lex.lex()
-parser = yacc.yacc(start='program')
+lexer = lex.lex()
+parser = yacc.yacc(start="program")
 ast = parser.parse(data)
 
 # %%
@@ -342,20 +403,21 @@ intType = ir.IntType(32)
 module = ir.Module(name="prog")
 
 fnty = ir.FunctionType(intType, [])
-func = ir.Function(module, fnty, name='main')
+func = ir.Function(module, fnty, name="main")
 
-entry = func.append_basic_block('entry')
+entry = func.append_basic_block("entry")
 builder = ir.IRBuilder(entry)
+
 
 class IRGenerator(Visitor):
     def __init__(self):
         self.stack = []
         self.symbols = {}
         self.typemap = {
-            'INT':   ir.IntType(32),
-            'BOOL':  ir.IntType(1),
-            'FLOAT': ir.DoubleType(),
-            'CHAR':  ir.IntType(8),
+            "INT": ir.IntType(32),
+            "BOOL": ir.IntType(1),
+            "FLOAT": ir.DoubleType(),
+            "CHAR": ir.IntType(8),
         }
 
     def visit_program(self, node: Program):
@@ -388,14 +450,14 @@ class IRGenerator(Visitor):
         val = self.stack.pop()
         ptr = self.symbols[node.identifier]
         builder.store(val, ptr)
-    
+
     def visit_if_statement(self, node: IfStatement):
         node.condition.accept(self)
         cond = self.stack.pop()
 
-        then_bb = func.append_basic_block('if.then')
-        else_bb = func.append_basic_block('if.else') if node.else_stmt else None
-        merge_bb = func.append_basic_block('if.end')
+        then_bb = func.append_basic_block("if.then")
+        else_bb = func.append_basic_block("if.else") if node.else_stmt else None
+        merge_bb = func.append_basic_block("if.end")
 
         if node.else_stmt:
             builder.cbranch(cond, then_bb, else_bb)
@@ -414,27 +476,23 @@ class IRGenerator(Visitor):
         builder.position_at_start(merge_bb)
 
     def visit_while_statement(self, node: WhileStatement):
-        whileHead = func.append_basic_block('while-head')
-        whileBody = func.append_basic_block('while-body')
-        whileExit = func.append_basic_block('while-exit')
+        whileHead = func.append_basic_block("while-head")
+        whileBody = func.append_basic_block("while-body")
+        whileExit = func.append_basic_block("while-exit")
         builder.branch(whileHead)
         builder.position_at_start(whileHead)
         node.condition.accept(self)
         condition = self.stack.pop()
-        builder.cbranch(
-            condition,
-            whileBody,
-            whileExit
-        )
+        builder.cbranch(condition, whileBody, whileExit)
         builder.position_at_start(whileBody)
         node.statement.accept(self)
         builder.branch(whileHead)
         builder.position_at_start(whileExit)
 
     def visit_do_while_statement(self, node: DoWhileStatement):
-        doBody = func.append_basic_block('do.body')
-        doCond = func.append_basic_block('do.cond')
-        doExit = func.append_basic_block('do.exit')
+        doBody = func.append_basic_block("do.body")
+        doCond = func.append_basic_block("do.cond")
+        doExit = func.append_basic_block("do.exit")
         builder.branch(doBody)
         builder.position_at_start(doBody)
         node.body.accept(self)
@@ -450,10 +508,10 @@ class IRGenerator(Visitor):
         if node.init:
             node.init.accept(self)
 
-        condBB = func.append_basic_block('for.cond')
-        bodyBB = func.append_basic_block('for.body')
-        postBB = func.append_basic_block('for.post')
-        exitBB = func.append_basic_block('for.exit')
+        condBB = func.append_basic_block("for.cond")
+        bodyBB = func.append_basic_block("for.body")
+        postBB = func.append_basic_block("for.post")
+        exitBB = func.append_basic_block("for.exit")
         builder.branch(condBB)
         builder.position_at_start(condBB)
         if node.condition:
@@ -476,22 +534,20 @@ class IRGenerator(Visitor):
             raise NameError(f"Undeclared variable '{node.name}'")
         ptr = self.symbols[node.name]
         self.stack.append(builder.load(ptr))
-    
+
     def visit_literal(self, node: Literal):
-        self.stack.append(
-            ir.Constant(intType, node.value)
-        )
-    
+        self.stack.append(ir.Constant(intType, node.value))
+
     def visit_unary_op(self, node: UnaryOp):
         node.operand.accept(self)
         val = self.stack.pop()
 
-        if node.op == '-':
+        if node.op == "-":
             zero = ir.Constant(val.type, 0)
             self.stack.append(builder.sub(zero, val))
-        elif node.op == '!':
+        elif node.op == "!":
             zero = ir.Constant(val.type, 0)
-            self.stack.append(builder.icmp_signed('==', val, zero))
+            self.stack.append(builder.icmp_signed("==", val, zero))
         else:
             raise ValueError(f"UnaryOp desconocido {node.op}")
 
@@ -500,44 +556,45 @@ class IRGenerator(Visitor):
         node.rhs.accept(self)
         rhs = self.stack.pop()
         lhs = self.stack.pop()
-        if node.op == '+':
+        if node.op == "+":
             self.stack.append(builder.add(lhs, rhs))
-        elif node.op == '-':
+        elif node.op == "-":
             self.stack.append(builder.sub(lhs, rhs))
-        elif node.op == '*':
+        elif node.op == "*":
             self.stack.append(builder.mul(lhs, rhs))
-        elif node.op == '/':
+        elif node.op == "/":
             self.stack.append(builder.sdiv(lhs, rhs))
-        elif node.op == '%':
+        elif node.op == "%":
             self.stack.append(builder.srem(lhs, rhs))
-        elif node.op == '<':
-            result = builder.icmp_signed('<', lhs,rhs)
+        elif node.op == "<":
+            result = builder.icmp_signed("<", lhs, rhs)
             self.stack.append(result)
-        elif node.op == '<=':
-            result = builder.icmp_signed('<=', lhs,rhs)
+        elif node.op == "<=":
+            result = builder.icmp_signed("<=", lhs, rhs)
             self.stack.append(result)
-        elif node.op == '>':
-            result = builder.icmp_signed('>', lhs,rhs)
+        elif node.op == ">":
+            result = builder.icmp_signed(">", lhs, rhs)
             self.stack.append(result)
-        elif node.op == '>=':
-            result = builder.icmp_signed('>=', lhs,rhs)
+        elif node.op == ">=":
+            result = builder.icmp_signed(">=", lhs, rhs)
             self.stack.append(result)
-        elif node.op == '==':
-            result = builder.icmp_signed('==', lhs,rhs)
+        elif node.op == "==":
+            result = builder.icmp_signed("==", lhs, rhs)
             self.stack.append(result)
-        elif node.op == '!=':
-            result = builder.icmp_signed('!=', lhs,rhs)
+        elif node.op == "!=":
+            result = builder.icmp_signed("!=", lhs, rhs)
             self.stack.append(result)
-        elif node.op == '||':
-            result = builder.or_(lhs,rhs)
+        elif node.op == "||":
+            result = builder.or_(lhs, rhs)
             self.stack.append(result)
-        elif node.op == '&&':
-            result = builder.and_(lhs,rhs)
+        elif node.op == "&&":
+            result = builder.and_(lhs, rhs)
             self.stack.append(result)
         else:
             raise ValueError(f"Operador desconocido {node.op}")
-        
-#%%
+
+
+# %%
 ast = parser.parse(data)
 visitor = IRGenerator()
 ast.accept(visitor)

@@ -1,7 +1,7 @@
 # %%
 import ply.lex as lex
 import ply.yacc as yacc
-from arbol import Literal, BinaryOp, Visitor, Variable, UnaryOp, WhileStatement, DoWhileStatement, IfStatement, Block, Assignment, Declaration, Program
+from arbol import Literal, BinaryOp, Visitor, Variable, UnaryOp, WhileStatement, DoWhileStatement, ForStatement, IfStatement, Block, Assignment, Declaration, Program
 
 literals = ['+','-','*','/', '%', '(', ')', '{', '}', ';', '=']
 reserved = {
@@ -14,6 +14,7 @@ reserved = {
     'char':  'CHAR',
     'main':  'MAIN',
     'do':    'DO',
+    'for':   'FOR',
 }
 tokens = [
     'INTLIT', 'ID', 'OR', 'AND', 'LEQ', 'GEQ', 'LT', 'GT',
@@ -115,11 +116,12 @@ def p_statements(p):
 def p_statement(p):
     """
     statement : ';'
-                 | block
-                 | assignment
-                 | if_statement
-                 | while_statement
-                 | do_while_statement
+              | block
+              | assignment
+              | if_statement
+              | while_statement
+              | do_while_statement
+              | for_statement
     """
     p[0] = p[1]
 
@@ -129,11 +131,24 @@ def p_block(p):
     """
     p[0] = Block(p[2])
 
-def p_assignment(p):
+def p_assignment_no_semi(p):
     """
-    assignment : ID '=' expression ';'
+    assignment_no_semi : ID '=' expression
     """
     p[0] = Assignment(p[1], p[3])
+
+def p_assignment(p):
+    """
+    assignment : assignment_no_semi ';'
+    """
+    p[0] = p[1]
+
+def p_assignment_opt(p):
+    """
+    assignment_opt : assignment_no_semi 
+                   | empty
+    """
+    p[0] = p[1]
 
 def p_if_statement(p):
     """
@@ -144,6 +159,16 @@ def p_if_statement(p):
         p[0] = IfStatement(p[3], p[5], p[7])
     else:
         p[0] = IfStatement(p[3], p[5], None)
+
+def p_for_statement(p):
+    """
+    for_statement : FOR '(' assignment_opt ';' expression_opt ';' assignment_opt ')' statement
+    """
+    init = p[3]
+    cond = p[5]
+    post = p[7]
+    body = p[9]
+    p[0] = ForStatement(init, cond, post, body)
 
 def p_do_while_statement(p):
     """
@@ -157,6 +182,13 @@ def p_while_statement(p):
     """
     
     p[0] = WhileStatement(p[3], p[5])
+
+def p_expression_opt(p):
+    """
+    expression_opt : expression
+                   | empty
+    """
+    p[0] = p[1]
 
 def p_expression(p):
     """ 
@@ -287,6 +319,7 @@ data = """
 int main() {
   int x;
   int y;
+  int i;
   bool flag;
   flag = -flag;
   flag = !flag ;
@@ -295,6 +328,7 @@ int main() {
   if (x < 3) { x = x + 1; } else { x = x - 1; }
   while (x > 0) { x = x - 1; }
   do { x = x - 1; } while (x > 0);
+  for (i = 0; i < 10; i = i + 1) {x = x + i;}
 }
 """
 lexer  = lex.lex()
@@ -410,6 +444,32 @@ class IRGenerator(Visitor):
         condVal = self.stack.pop()
         builder.cbranch(condVal, doBody, doExit)
         builder.position_at_start(doExit)
+
+    def visit_for_statement(self, node: ForStatement):
+        entryBB = builder.block
+        if node.init:
+            node.init.accept(self)
+
+        condBB = func.append_basic_block('for.cond')
+        bodyBB = func.append_basic_block('for.body')
+        postBB = func.append_basic_block('for.post')
+        exitBB = func.append_basic_block('for.exit')
+        builder.branch(condBB)
+        builder.position_at_start(condBB)
+        if node.condition:
+            node.condition.accept(self)
+            condVal = self.stack.pop()
+        else:
+            condVal = ir.Constant(ir.IntType(1), 1)
+        builder.cbranch(condVal, bodyBB, exitBB)
+        builder.position_at_start(bodyBB)
+        node.body.accept(self)
+        builder.branch(postBB)
+        builder.position_at_start(postBB)
+        if node.update:
+            node.update.accept(self)
+        builder.branch(condBB)
+        builder.position_at_start(exitBB)
 
     def visit_variable(self, node):
         if node.name not in self.symbols:

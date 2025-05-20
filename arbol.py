@@ -116,6 +116,15 @@ class DoWhileStatement:
     def accept(self, visitor):
         return visitor.visit_do_while_statement(self)
 
+class ForStatement:
+    def __init__(self, init, condition, update, body):
+        self.init = init
+        self.condition = condition
+        self.update = update
+        self.body = body
+
+    def accept(self, visitor):
+        return visitor.visit_for_statement(self)
 
 class IfStatement:
     def __init__(self, condition, then_stmt, else_stmt=None):

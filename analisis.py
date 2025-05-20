@@ -1,7 +1,7 @@
 # %%
 import ply.lex as lex
 import ply.yacc as yacc
-from arbol import Literal, BinaryOp, Visitor, Variable, UnaryOp, WhileStatement, IfStatement, Block, Assignment, Declaration, Program
+from arbol import Literal, BinaryOp, Visitor, Variable, UnaryOp, WhileStatement, DoWhileStatement, IfStatement, Block, Assignment, Declaration, Program
 
 literals = ['+','-','*','/', '%', '(', ')', '{', '}', ';', '=']
 reserved = {
@@ -13,6 +13,7 @@ reserved = {
     'float': 'FLOAT',
     'char':  'CHAR',
     'main':  'MAIN',
+    'do':    'DO',
 }
 tokens = [
     'INTLIT', 'ID', 'OR', 'AND', 'LEQ', 'GEQ', 'LT', 'GT',
@@ -64,35 +65,47 @@ precedence = (
     ('left',  '*', '/', '%'),
 )
 def p_empty(p):
-    '''empty :'''
+    """
+    empty :
+    """
     p[0] = []
 
 def p_program(p):
-    '''program : INT MAIN "(" ")" "{" declarations statements "}"'''
+    """
+    program : INT MAIN "(" ")" "{" declarations statements "}"
+    """
     p[0] = Program(p[6], p[7])
 
 def p_declarations(p):
-    '''declarations : declaration declarations
-                    | empty'''
+    """
+    declarations : declaration declarations
+                 | empty
+    """
     if len(p) == 3:
         p[0] = [p[1]] + p[2]
     else:
         p[0] = []
 
 def p_declaration(p):
-    '''declaration : type ID ";"'''
+    """
+    declaration : type ID ";"
+    """
     p[0] = Declaration(p[1], p[2])
 
 def p_type(p):
-    '''type : INT
-            | BOOL
-            | FLOAT
-            | CHAR'''
+    """
+    type : INT
+         | BOOL
+         | FLOAT
+         | CHAR
+    """
     p[0] = p.slice[1].type
 
 def p_statements(p):
-    '''statements : statement statements
-                  | empty'''
+    """
+    statements : statement statements
+               | empty
+    """
     if len(p) == 3:
         p[0] = [p[1]] + p[2]
     else:
@@ -100,33 +113,49 @@ def p_statements(p):
 
 
 def p_statement(p):
-    '''statement : ';'
+    """
+    statement : ';'
                  | block
                  | assignment
                  | if_statement
-                 | while_statement'''
+                 | while_statement
+                 | do_while_statement
+    """
     p[0] = p[1]
 
 def p_block(p):
-    '''block : '{' statements '}' '''
+    """
+    block : '{' statements '}' 
+    """
     p[0] = Block(p[2])
 
 def p_assignment(p):
-    '''assignment : ID '=' expression ';' '''
+    """
+    assignment : ID '=' expression ';'
+    """
     p[0] = Assignment(p[1], p[3])
 
 def p_if_statement(p):
-    '''if_statement : IF '(' expression ')' statement ELSE statement
-                    | IF '(' expression ')' statement'''
+    """
+    if_statement : IF '(' expression ')' statement ELSE statement
+                    | IF '(' expression ')' statement
+    """
     if len(p) == 8:
         p[0] = IfStatement(p[3], p[5], p[7])
     else:
         p[0] = IfStatement(p[3], p[5], None)
 
+def p_do_while_statement(p):
+    """
+    do_while_statement : DO statement WHILE '(' expression ')' ';'
+    """
+    p[0] = DoWhileStatement(p[5], p[2])
+
 def p_while_statement(p):
-    '''
+    """
     while_statement : WHILE '(' expression ')' statement
-    '''
+    """
+    
     p[0] = WhileStatement(p[3], p[5])
 
 def p_expression(p):
@@ -265,6 +294,7 @@ int main() {
   x = 0;
   if (x < 3) { x = x + 1; } else { x = x - 1; }
   while (x > 0) { x = x - 1; }
+  do { x = x - 1; } while (x > 0);
 }
 """
 lexer  = lex.lex()
@@ -367,6 +397,20 @@ class IRGenerator(Visitor):
         builder.branch(whileHead)
         builder.position_at_start(whileExit)
 
+    def visit_do_while_statement(self, node: DoWhileStatement):
+        doBody = func.append_basic_block('do.body')
+        doCond = func.append_basic_block('do.cond')
+        doExit = func.append_basic_block('do.exit')
+        builder.branch(doBody)
+        builder.position_at_start(doBody)
+        node.body.accept(self)
+        builder.branch(doCond)
+        builder.position_at_start(doCond)
+        node.condition.accept(self)
+        condVal = self.stack.pop()
+        builder.cbranch(condVal, doBody, doExit)
+        builder.position_at_start(doExit)
+
     def visit_variable(self, node):
         if node.name not in self.symbols:
             raise NameError(f"Undeclared variable '{node.name}'")
@@ -451,5 +495,6 @@ cfunc = CFUNCTYPE(c_int)(func_ptr)
 res = cfunc()
 print("main() =", res)
 print(mod)
+
 
 # %%

@@ -107,6 +107,15 @@ class WhileStatement:
 
     def accept(self, visitor):
         visitor.visit_while_statement(self)
+        
+class DoWhileStatement:
+    def __init__(self, condition, body):
+        self.condition = condition
+        self.body = body
+
+    def accept(self, visitor):
+        return visitor.visit_do_while_statement(self)
+
 
 class IfStatement:
     def __init__(self, condition, then_stmt, else_stmt=None):

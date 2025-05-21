@@ -2,10 +2,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
+
 class ASTNode(ABC):
     @abstractmethod
     def accept(self, visitor: Visitor) -> None:
         pass
+
 
 class Literal(ASTNode):
     def __init__(self, value: Any, type: str) -> None:
@@ -15,6 +17,7 @@ class Literal(ASTNode):
     def accept(self, visitor: Visitor):
         visitor.visit_literal(self)
 
+
 class Variable(ASTNode):
     def __init__(self, name: Any, type: str = None) -> None:
         self.name = name
@@ -22,6 +25,7 @@ class Variable(ASTNode):
 
     def accept(self, visitor: Visitor):
         visitor.visit_variable(self)
+
 
 class BinaryOp(ASTNode):
     def __init__(self, op: str, lhs: ASTNode, rhs: ASTNode) -> None:
@@ -40,6 +44,7 @@ class UnaryOp:
     def accept(self, visitor: Visitor):
         visitor.visit_unary_op(self)
 
+
 class WhileStatement:
     def __init__(self, condition, statement):
         self.condition = condition
@@ -47,7 +52,8 @@ class WhileStatement:
 
     def accept(self, visitor: Visitor):
         visitor.visit_while_statement(self)
-        
+
+
 class DoWhileStatement:
     def __init__(self, condition, body):
         self.condition = condition
@@ -55,6 +61,36 @@ class DoWhileStatement:
 
     def accept(self, visitor: Visitor):
         return visitor.visit_do_while_statement(self)
+
+
+class CaseClause:
+    def __init__(self, value, stmts):
+        self.value = value
+        self.stmts = stmts
+
+
+class DefaultClause:
+    def __init__(self, stmts):
+        self.stmts = stmts
+
+
+class BreakStatement:
+    def __init__(self):
+        pass
+
+    def accept(self, visitor):
+        return visitor.visit_break_statement(self)
+
+
+class SwitchStatement:
+    def __init__(self, expr, cases, default):
+        self.expr = expr
+        self.cases = cases  # [CaseClause, ...]
+        self.default = default  # DefaultClause or None
+
+    def accept(self, visitor):
+        return visitor.visit_switch_statement(self)
+
 
 class ForStatement:
     def __init__(self, init, condition, update, body):
@@ -66,6 +102,7 @@ class ForStatement:
     def accept(self, visitor: Visitor):
         return visitor.visit_for_statement(self)
 
+
 class IfStatement:
     def __init__(self, condition, then_stmt, else_stmt=None):
         self.condition = condition
@@ -75,12 +112,14 @@ class IfStatement:
     def accept(self, visitor: Visitor):
         visitor.visit_if_statement(self)
 
+
 class Block:
     def __init__(self, statements):
         self.statements = statements
 
     def accept(self, visitor: Visitor):
         visitor.visit_block(self)
+
 
 class Assignment:
     def __init__(self, identifier, expression):
@@ -89,7 +128,8 @@ class Assignment:
 
     def accept(self, visitor: Visitor):
         visitor.visit_assignment(self)
-        
+
+
 class Declaration:
     def __init__(self, typ, identifier, initializer=None):
         self.typ = typ
@@ -237,4 +277,3 @@ class Calculator(Visitor):
             self.stack.append(lhs or rhs)
         elif node.op == '&&':
             self.stack.append(lhs and rhs)
-     

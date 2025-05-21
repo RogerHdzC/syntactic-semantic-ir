@@ -1,9 +1,9 @@
 # %%
 import ply.lex as lex
 import ply.yacc as yacc
-from arbol import Literal, BinaryOp, Visitor, Variable, UnaryOp, WhileStatement, DoWhileStatement, ForStatement, IfStatement, Block, Assignment, Declaration, Program
+from arbol import Literal, BinaryOp, Visitor, Variable, UnaryOp, WhileStatement, DoWhileStatement, ForStatement, IfStatement, Block, Assignment, Declaration, Program, FunctionDecl, CallExpr, CallStatement, ReturnStatement
 
-literals = ['+','-','*','/', '%', '(', ')', '{', '}', ';', '=']
+literals = ['+','-','*','/', '%', '(', ')', '{', '}', ';', '=', ',']
 reserved = {
     'while': 'WHILE',
     'if':    'IF',
@@ -15,6 +15,7 @@ reserved = {
     'main':  'MAIN',
     'do':    'DO',
     'for':   'FOR',
+    'return': 'RETURN'
 }
 tokens = [
     'FLOATLIT', 'INTLIT', 'ID', 'OR', 'AND', 'LEQ', 'GEQ', 'LT', 'GT',
@@ -78,9 +79,89 @@ def p_empty(p):
 
 def p_program(p):
     """
-    program : INT MAIN "(" ")" "{" declarations statements "}"
+    program : functions
     """
-    p[0] = Program(p[6], p[7])
+    p[0] = Program(p[1])
+
+def p_functions(p):
+    """
+    functions : mainfunction functions
+              | function functions
+              | empty
+    """
+    if len(p) == 3:
+        p[0] = [p[1]] + p[2]
+    else:
+        p[0] = []
+
+def p_return_statement(p):
+    """
+    return_statement : RETURN expression_opt ";"
+    """
+    p[0] = ReturnStatement(p[2])
+
+def p_function(p):
+    """
+    function : type ID "(" parameters ")" "{" declarations statements "}"
+    """
+    ret_type = p[1]
+    name     = p[2]
+    params   = p[4]    # lista de pares (tipo, id)
+    decls    = p[7]
+    stmts    = p[8]
+    p[0] = FunctionDecl(ret_type, name, params, decls, stmts)
+
+def p_mainfunction(p):
+    """
+    mainfunction : INT MAIN "(" ")" "{" declarations statements "}"
+    """
+    p[0] = FunctionDecl('INT', 'main', [], p[6], p[7])
+
+def p_call_statement(p):
+    """
+    call_statement : ID "(" arguments ")" ";"
+    """
+    p[0] = CallStatement(p[1], p[3])
+
+def p_arguments(p):
+    """
+    arguments : expression_list
+              | empty
+    """
+    p[0] = p[1]
+
+def p_expression_list(p):
+    """
+    expression_list : expression
+                    | expression "," expression_list
+    """
+    if len(p) == 2:
+        p[0] = [p[1]]
+    else:
+        p[0] = [p[1]] + p[3]
+
+def p_parameters(p):
+    """
+    parameters : parameter_list
+               | empty
+    """
+    p[0] = p[1]
+
+def p_parameter_list(p):
+    """
+    parameter_list : parameter
+                   | parameter "," parameter_list
+    """
+    if len(p) == 2:
+        p[0] = [p[1]]
+    else:
+        p[0] = [p[1]] + p[3]
+
+def p_parameter(p):
+    """
+    parameter : type ID
+    """
+    p[0] = (p[1], p[2])
 
 def p_declarations(p):
     """
@@ -130,6 +211,8 @@ def p_statement(p):
               | while_statement
               | do_while_statement
               | for_statement
+              | return_statement
+              | call_statement
     """
     p[0] = p[1]
 
@@ -309,6 +392,7 @@ def p_primary(p):
     """
     primary : INTLIT
             | FLOATLIT
+            | ID "(" arguments ")"
             | ID
             | '(' expression ')'
     """
@@ -319,6 +403,8 @@ def p_primary(p):
             p[0] = Literal(p[1], 'FLOAT')
         else:
             p[0] = Variable(p[1])
+    elif p[2] == '(':
+        p[0] = CallExpr(p[1], p[3])
     else:
         p[0] = p[2]
     
@@ -327,23 +413,15 @@ def p_error(p):
 
 # %%
 data = """
+int add(int a, int b) {
+  int result;
+  result = a + b;
+  return result;
+}
+
 int main() {
   int x;
-  int y;
-  int i;
-  float a = 2.41;
-  float b = 3.41;
-  float c;
-  bool flag;
-  flag = -flag;
-  flag = !flag ;
-  y = 2 - 1; 
-  x = 0;
-  c = a + b;
-  if (x < 3) { x = x + 1; } else { x = x - 1; }
-  while (x > 0) { x = x - 1; }
-  do { x = x - 1; } while (x > 0);
-  for (i = 0; i < 10; i = i + 1) {x = x + i;}
+  x = add(3, 4);
 }
 """
 lexer  = lex.lex()
@@ -356,16 +434,13 @@ from llvmlite import ir
 intType = ir.IntType(32)
 module = ir.Module(name="prog")
 
-fnty = ir.FunctionType(intType, [])
-func = ir.Function(module, fnty, name='main')
-
-entry = func.append_basic_block('entry')
-builder = ir.IRBuilder(entry)
-
 class IRGenerator(Visitor):
-    def __init__(self):
-        self.stack = []
+    def __init__(self, module: ir.Module):
+        self.module  = module
+        self.builder = None
+        self.func    = None
         self.symbols = {}
+        self.stack   = []
         self.typemap = {
             'INT':   ir.IntType(32),
             'BOOL':  ir.IntType(1),
@@ -374,25 +449,45 @@ class IRGenerator(Visitor):
         }
 
     def visit_program(self, node: Program):
+        for fn in node.functions:
+            self.visit_function_decl(fn)
+    
+    def visit_function_decl(self, node: FunctionDecl):
+        param_types = [ self.typemap[t] for t,_ in node.params ]
+        fn_ty = ir.FunctionType(self.typemap[node.ret_type], param_types)
+        fn    = ir.Function(self.module, fn_ty, name=node.name)
+        
+        entry = fn.append_basic_block('entry')
+        self.builder = ir.IRBuilder(entry)
+        self.func    = fn
+
+        for i,(_, name) in enumerate(node.params):
+            alloca = self.builder.alloca(fn.args[i].type, name=name)
+            self.builder.store(fn.args[i], alloca)
+            self.symbols[name] = alloca
+
         for decl in node.declarations:
             decl.accept(self)
 
         for stmt in node.statements:
             stmt.accept(self)
 
-        builder.ret(ir.Constant(intType, 0))
+        if not fn.blocks[-1].is_terminated:
+            if node.ret_type == 'INT':
+                self.builder.ret(ir.Constant(self.typemap['INT'], 0))
+            else:
+                self.builder.ret(ir.Constant(self.typemap[node.ret_type], 0.0))
 
     def visit_declaration(self, node: Declaration):
         ty = self.typemap[node.typ]
-        with builder.goto_entry_block():
-            alloca = builder.alloca(ty, name=node.identifier)
+        alloca = self.builder.alloca(ty, name=node.identifier)
         self.symbols[node.identifier] = alloca
-
-        if isinstance(ty, ir.DoubleType):
-            zero = ir.Constant(ty, 0.0)
-        else:
-            zero = ir.Constant(ty, 0)
-        builder.store(zero, alloca)
+        zero = ir.Constant(ty, 0.0 if isinstance(ty, ir.DoubleType) else 0)
+        self.builder.store(zero, alloca)
+        if node.initializer:
+            node.initializer.accept(self)
+            val = self.stack.pop()
+            self.builder.store(val, alloca)
 
     def visit_block(self, node: Block):
         for stmt in node.statements:
@@ -402,113 +497,110 @@ class IRGenerator(Visitor):
         node.expression.accept(self)
         val = self.stack.pop()
         ptr = self.symbols[node.identifier]
-        builder.store(val, ptr)
+        self.builder.store(val, ptr)
     
     def visit_if_statement(self, node: IfStatement):
         node.condition.accept(self)
         cond = self.stack.pop()
 
-        then_bb = func.append_basic_block('if.then')
-        else_bb = func.append_basic_block('if.else') if node.else_stmt else None
-        merge_bb = func.append_basic_block('if.end')
+        then_bb = self.func.append_basic_block('if.then')
+        else_bb = self.func.append_basic_block('if.else') if node.else_stmt else None
+        merge_bb = self.func.append_basic_block('if.end')
 
         if node.else_stmt:
-            builder.cbranch(cond, then_bb, else_bb)
+            self.builder.cbranch(cond, then_bb, else_bb)
         else:
-            builder.cbranch(cond, then_bb, merge_bb)
+            self.builder.cbranch(cond, then_bb, merge_bb)
 
-        builder.position_at_start(then_bb)
+        self.builder.position_at_start(then_bb)
         node.then_stmt.accept(self)
-        builder.branch(merge_bb)
+        self.builder.branch(merge_bb)
 
         if node.else_stmt:
-            builder.position_at_start(else_bb)
+            self.builder.position_at_start(else_bb)
             node.else_stmt.accept(self)
-            builder.branch(merge_bb)
+            self.builder.branch(merge_bb)
 
-        builder.position_at_start(merge_bb)
+        self.builder.position_at_start(merge_bb)
 
     def visit_while_statement(self, node: WhileStatement):
-        whileHead = func.append_basic_block('while-head')
-        whileBody = func.append_basic_block('while-body')
-        whileExit = func.append_basic_block('while-exit')
-        builder.branch(whileHead)
-        builder.position_at_start(whileHead)
+        whileHead = self.func.append_basic_block('while-head')
+        whileBody = self.func.append_basic_block('while-body')
+        whileExit = self.func.append_basic_block('while-exit')
+        self.builder.branch(whileHead)
+        self.builder.position_at_start(whileHead)
         node.condition.accept(self)
         condition = self.stack.pop()
-        builder.cbranch(
+        self.builder.cbranch(
             condition,
             whileBody,
             whileExit
         )
-        builder.position_at_start(whileBody)
+        self.builder.position_at_start(whileBody)
         node.statement.accept(self)
-        builder.branch(whileHead)
-        builder.position_at_start(whileExit)
+        self.builder.branch(whileHead)
+        self.builder.position_at_start(whileExit)
 
     def visit_do_while_statement(self, node: DoWhileStatement):
-        doBody = func.append_basic_block('do.body')
-        doCond = func.append_basic_block('do.cond')
-        doExit = func.append_basic_block('do.exit')
-        builder.branch(doBody)
-        builder.position_at_start(doBody)
+        doBody = self.func.append_basic_block('do.body')
+        doCond = self.func.append_basic_block('do.cond')
+        doExit = self.func.append_basic_block('do.exit')
+        self.builder.branch(doBody)
+        self.builder.position_at_start(doBody)
         node.body.accept(self)
-        builder.branch(doCond)
-        builder.position_at_start(doCond)
+        self.builder.branch(doCond)
+        self.builder.position_at_start(doCond)
         node.condition.accept(self)
         condVal = self.stack.pop()
-        builder.cbranch(condVal, doBody, doExit)
-        builder.position_at_start(doExit)
+        self.builder.cbranch(condVal, doBody, doExit)
+        self.builder.position_at_start(doExit)
 
     def visit_for_statement(self, node: ForStatement):
-        entryBB = builder.block
+        entryBB = self.builder.block
         if node.init:
             node.init.accept(self)
 
-        condBB = func.append_basic_block('for.cond')
-        bodyBB = func.append_basic_block('for.body')
-        postBB = func.append_basic_block('for.post')
-        exitBB = func.append_basic_block('for.exit')
-        builder.branch(condBB)
-        builder.position_at_start(condBB)
+        condBB = self.func.append_basic_block('for.cond')
+        bodyBB = self.func.append_basic_block('for.body')
+        postBB = self.func.append_basic_block('for.post')
+        exitBB = self.func.append_basic_block('for.exit')
+        self.builder.branch(condBB)
+        self.builder.position_at_start(condBB)
         if node.condition:
             node.condition.accept(self)
             condVal = self.stack.pop()
         else:
             condVal = ir.Constant(ir.IntType(1), 1)
-        builder.cbranch(condVal, bodyBB, exitBB)
-        builder.position_at_start(bodyBB)
+        self.builder.cbranch(condVal, bodyBB, exitBB)
+        self.builder.position_at_start(bodyBB)
         node.body.accept(self)
-        builder.branch(postBB)
-        builder.position_at_start(postBB)
+        self.builder.branch(postBB)
+        self.builder.position_at_start(postBB)
         if node.update:
             node.update.accept(self)
-        builder.branch(condBB)
-        builder.position_at_start(exitBB)
+        self.builder.branch(condBB)
+        self.builder.position_at_start(exitBB)
 
-    def visit_variable(self, node):
-        if node.name not in self.symbols:
-            raise NameError(f"Undeclared variable '{node.name}'")
+    def visit_variable(self, node: Variable):
         ptr = self.symbols[node.name]
-        self.stack.append(builder.load(ptr))
+        self.stack.append(self.builder.load(ptr))
     
     def visit_literal(self, node: Literal):
-        self.stack.append(
-            ir.Constant(intType, node.value)
-        )
+        const = (ir.Constant(self.typemap['FLOAT'], node.value)
+                 if node.type=='FLOAT'
+                 else ir.Constant(self.typemap[node.type], node.value))
+        self.stack.append(const)
     
     def visit_unary_op(self, node: UnaryOp):
         node.operand.accept(self)
-        val = self.stack.pop()
-
+        v = self.stack.pop()
         if node.op == '-':
-            zero = ir.Constant(val.type, 0)
-            self.stack.append(builder.sub(zero, val))
-        elif node.op == '!':
-            zero = ir.Constant(val.type, 0)
-            self.stack.append(builder.icmp_signed('==', val, zero))
+            zero = ir.Constant(v.type, 0)
+            op = self.builder.fsub if isinstance(v.type, ir.DoubleType) else self.builder.sub
+            self.stack.append(op(zero, v))
         else:
-            raise ValueError(f"UnaryOp desconocido {node.op}")
+            zero = ir.Constant(v.type, 0)
+            self.stack.append(self.builder.icmp_signed('==', v, zero))
 
     def visit_binary_op(self, node: BinaryOp) -> None:
         node.lhs.accept(self)
@@ -519,19 +611,19 @@ class IRGenerator(Visitor):
         is_float = isinstance(lhs.type, ir.DoubleType)
 
         if node.op == '+':
-            instr = builder.fadd if is_float else builder.add
+            instr = self.builder.fadd if is_float else self.builder.add
             self.stack.append(instr(lhs, rhs))
         elif node.op == '-':
-            instr = builder.fsub if is_float else builder.sub
+            instr = self.builder.fsub if is_float else self.builder.sub
             self.stack.append(instr(lhs, rhs))
         elif node.op == '*':
-            instr = builder.fmul if is_float else builder.mul
+            instr = self.builder.fmul if is_float else self.builder.mul
             self.stack.append(instr(lhs, rhs))
         elif node.op == '/':
-            instr = builder.fdiv if is_float else builder.sdiv
+            instr = self.builder.fdiv if is_float else self.builder.sdiv
             self.stack.append(instr(lhs, rhs))
         elif node.op == '%':
-            instr = builder.frem if is_float else builder.srem
+            instr = self.builder.frem if is_float else self.builder.srem
             self.stack.append(instr(lhs, rhs))
 
         elif node.op in ('<','<=','>','>=','==','!='):
@@ -542,22 +634,46 @@ class IRGenerator(Visitor):
                     '==': 'UEQ','!=': 'UNE',
                 }
                 pred = pred_map[node.op]
-                cmp = builder.fcmp_ordered(pred, lhs, rhs)
+                cmp = self.builder.fcmp_ordered(pred, lhs, rhs)
             else:
-                cmp = builder.icmp_signed(node.op, lhs, rhs)
+                cmp = self.builder.icmp_signed(node.op, lhs, rhs)
             self.stack.append(cmp)
 
         elif node.op == '||':
-            self.stack.append(builder.or_(lhs, rhs))
+            self.stack.append(self.builder.or_(lhs, rhs))
         elif node.op == '&&':
-            self.stack.append(builder.and_(lhs, rhs))
+            self.stack.append(self.builder.and_(lhs, rhs))
 
         else:
             raise ValueError(f"Operador desconocido {node.op}")
 
+    def visit_return_statement(self, node: ReturnStatement):
+        if node.expression:
+            node.expression.accept(self)
+            val = self.stack.pop()
+            self.builder.ret(val)
+        else:
+            self.builder.ret(ir.Constant(self.typemap['INT'], 0))
+
+    def visit_call_expr(self, node: CallExpr):
+        args = []
+        for arg in node.arguments:
+            arg.accept(self)
+            args.append(self.stack.pop())
+        fn = self.module.get_global(node.name)
+        call = self.builder.call(fn, args)
+        self.stack.append(call)
+
+    def visit_call_statement(self, node: CallStatement):
+        args = []
+        for arg in node.arguments:
+            arg.accept(self)
+            args.append(self.stack.pop())
+        fn = self.module.get_global(node.name)
+        self.builder.call(fn, args)
 #%%
 ast = parser.parse(data)
-visitor = IRGenerator()
+visitor = IRGenerator(module)
 ast.accept(visitor)
 print(module)
 # %%

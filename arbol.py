@@ -151,9 +151,10 @@ class Assignment:
         visitor.visit_assignment(self)
         
 class Declaration:
-    def __init__(self, typ, identifier):
+    def __init__(self, typ, identifier, initializer=None):
         self.typ = typ
         self.identifier = identifier
+        self.initializer = initializer
     def accept(self, visitor):
         visitor.visit_declaration(self)
 

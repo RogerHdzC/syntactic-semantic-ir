@@ -2,8 +2,12 @@
 import ply.lex as lex
 import ply.yacc as yacc
 from arbol import (
+    BreakStatement,
+    CaseClause,
+    DefaultClause,
     Literal,
     BinaryOp,
+    SwitchStatement,
     Visitor,
     Variable,
     UnaryOp,
@@ -17,7 +21,7 @@ from arbol import (
     Program,
 )
 
-literals = ["+", "-", "*", "/", "%", "(", ")", "{", "}", ";", "="]
+literals = ["+", "-", "*", "/", "%", "(", ")", "{", "}", ";", "=", ":"]
 reserved = {
     "while": "WHILE",
     "if": "IF",
@@ -29,6 +33,10 @@ reserved = {
     "main": "MAIN",
     "do": "DO",
     "for": "FOR",
+    "switch": "SWITCH",
+    "case": "CASE",
+    "default": "DEFAULT",
+    "break": "BREAK",
 }
 tokens = [
     "INTLIT",
@@ -44,6 +52,7 @@ tokens = [
     "MINUS",
     "PLUS",
     "NOT",
+    "COLON",
 ] + list(reserved.values())
 
 t_ignore = " \t"
@@ -77,6 +86,7 @@ t_NEQ = r"!="
 t_MINUS = r"-"
 t_NOT = r"!"
 t_PLUS = r"\+"
+t_COLON = r":"
 
 
 def t_error(t):
@@ -160,6 +170,8 @@ def p_statement(p):
               | while_statement
               | do_while_statement
               | for_statement
+              | switch_statement
+              | break_statement
     """
     p[0] = p[1]
 
@@ -228,6 +240,47 @@ def p_while_statement(p):
     """
 
     p[0] = WhileStatement(p[3], p[5])
+
+
+def p_switch_statement(p):
+    """
+    switch_statement : SWITCH '(' expression ')' '{' case_clauses default_clause_opt '}'
+    """
+    p[0] = SwitchStatement(p[3], p[6], p[7])
+
+
+def p_case_clauses(p):
+    """
+    case_clauses : case_clause case_clauses
+                 | empty
+    """
+    if len(p) == 3:
+        p[0] = [p[1]] + p[2]
+    else:
+        p[0] = []
+
+
+def p_case_clause(p):
+    """
+    case_clause : CASE INTLIT COLON statements
+    """
+    p[0] = CaseClause(p[2], p[4])
+
+
+def p_default_clause_opt(p):
+    """
+    default_clause_opt : DEFAULT COLON statements
+                       | empty
+    """
+    if len(p) == 4:
+        p[0] = DefaultClause(p[3])
+    else:
+        p[0] = None
+
+
+def p_break_statement(p):
+    "break_statement : BREAK ';'"
+    p[0] = BreakStatement()
 
 
 def p_expression_opt(p):
@@ -378,18 +431,21 @@ def p_error(p):
 # %%
 data = """
 int main() {
-  int x;
-  int y;
-  int i;
-  bool flag;
-  flag = -flag;
-  flag = !flag ;
-  y = 2 - 1; 
-  x = 0;
-  if (x < 3) { x = x + 1; } else { x = x - 1; }
-  while (x > 0) { x = x - 1; }
-  do { x = x - 1; } while (x > 0);
-  for (i = 0; i < 10; i = i + 1) {x = x + i;}
+    int x;
+    int y;
+    int i;
+    bool flag;
+    flag = -flag;
+    flag = !flag ;
+    y = 2 - 1; 
+    x = 0;
+    if (x < 3) { x = x + 1; } else { x = x - 1; }
+    while (x > 0) { x = x - 1; }
+    do { x = x - 1; } while (x > 0);
+    for (i = 0; i < 10; i = i + 1) {x = x + i;}
+    switch (x) {
+        case 1: x = x + 1; break;
+    }
 }
 """
 lexer = lex.lex()
@@ -528,6 +584,59 @@ class IRGenerator(Visitor):
             node.update.accept(self)
         builder.branch(condBB)
         builder.position_at_start(exitBB)
+
+    def visit_switch_statement(self, node):
+        # Create the end block for the switch statement
+        end_block = func.append_basic_block("switch.end")
+
+        # Evaluate the switch expression and store its value
+        node.expr.accept(self)
+        switch_val = self.stack.pop()
+
+        # Create basic blocks for each case and the default case
+        case_blocks = {}
+        for case in node.cases:
+            case_blocks[case.value] = func.append_basic_block(f"case_{case.value}")
+        default_block = (
+            func.append_basic_block("default") if node.default else end_block
+        )
+
+        # Create the switch instruction
+        switch_inst = builder.switch(switch_val, default_block)
+        for value, block in case_blocks.items():
+            switch_inst.add_case(ir.Constant(switch_val.type, value), block)
+
+        # Generate code for each case block
+        for case in node.cases:
+            builder.position_at_start(case_blocks[case.value])
+            self.current_break_target = end_block
+            self.visit_case_statements(case.stmts)
+
+        # Generate code for each case block
+        for i, case in enumerate(node.cases):
+            builder.position_at_start(case_blocks[case.value])
+            self.current_break_target = end_block
+            self.visit_case_statements(case.stmts)
+
+            # If the block is not terminated, branch to the next case or the end block
+            if not builder.block.is_terminated:
+                next_block = (
+                    case_blocks[node.cases[i + 1].value]
+                    if i + 1 < len(node.cases)
+                    else end_block
+                )
+                builder.branch(next_block)
+            # Position the builder at the end block
+            builder.position_at_start(end_block)
+
+    def visit_case_statements(self, statements):
+        for stmt in statements:
+            stmt.accept(self)
+
+    def visit_break_statement(self, node):
+        if self.current_break_target is None:
+            raise Exception("Out of context for break statement")
+        builder.branch(self.current_break_target)
 
     def visit_variable(self, node):
         if node.name not in self.symbols:

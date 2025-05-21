@@ -129,6 +129,35 @@ class DoWhileStatement:
         return visitor.visit_do_while_statement(self)
 
 
+class CaseClause:
+    def __init__(self, value, stmts):
+        self.value = value
+        self.stmts = stmts
+
+
+class DefaultClause:
+    def __init__(self, stmts):
+        self.stmts = stmts
+
+
+class BreakStatement:
+    def __init__(self):
+        pass
+
+    def accept(self, visitor):
+        return visitor.visit_break_statement(self)
+
+
+class SwitchStatement:
+    def __init__(self, expr, cases, default):
+        self.expr = expr
+        self.cases = cases  # [CaseClause, ...]
+        self.default = default  # DefaultClause or None
+
+    def accept(self, visitor):
+        return visitor.visit_switch_statement(self)
+
+
 class ForStatement:
     def __init__(self, init, condition, update, body):
         self.init = init

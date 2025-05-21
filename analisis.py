@@ -17,7 +17,7 @@ reserved = {
     'for':   'FOR',
 }
 tokens = [
-    'INTLIT', 'ID', 'OR', 'AND', 'LEQ', 'GEQ', 'LT', 'GT',
+    'FLOATLIT', 'INTLIT', 'ID', 'OR', 'AND', 'LEQ', 'GEQ', 'LT', 'GT',
     'EQ', 'NEQ', 'MINUS', 'PLUS', 'NOT',
 ] + list(reserved.values())
 
@@ -26,6 +26,11 @@ t_ignore  = ' \t'
 def t_ID(t):
     r'[a-zA-Z_][a-zA-Z_0-9]*'
     t.type = reserved.get(t.value, 'ID')
+    return t
+
+def t_FLOATLIT(t):
+    r'([0-9]+\.[0-9]*|\.[0-9]+)'
+    t.value = float(t.value)
     return t
 
 def t_INTLIT(t):
@@ -90,8 +95,12 @@ def p_declarations(p):
 def p_declaration(p):
     """
     declaration : type ID ";"
+                | type ID '=' expression ';'
     """
-    p[0] = Declaration(p[1], p[2])
+    if len(p) == 4:
+        p[0] = Declaration(p[1], p[2])
+    else:
+        p[0] = Declaration(p[1], p[2], p[4])
 
 def p_type(p):
     """
@@ -111,7 +120,6 @@ def p_statements(p):
         p[0] = [p[1]] + p[2]
     else:
         p[0] = []
-
 
 def p_statement(p):
     """
@@ -300,12 +308,15 @@ def p_unary_op(p):
 def p_primary(p):
     """
     primary : INTLIT
+            | FLOATLIT
             | ID
             | '(' expression ')'
     """
     if len(p) == 2:
         if isinstance(p[1], int):
             p[0] = Literal(p[1], 'INT')
+        elif isinstance(p[1], float):
+            p[0] = Literal(p[1], 'FLOAT')
         else:
             p[0] = Variable(p[1])
     else:
@@ -320,11 +331,15 @@ int main() {
   int x;
   int y;
   int i;
+  float a = 2.41;
+  float b = 3.41;
+  float c;
   bool flag;
   flag = -flag;
   flag = !flag ;
   y = 2 - 1; 
   x = 0;
+  c = a + b;
   if (x < 3) { x = x + 1; } else { x = x - 1; }
   while (x > 0) { x = x - 1; }
   do { x = x - 1; } while (x > 0);
@@ -500,43 +515,46 @@ class IRGenerator(Visitor):
         node.rhs.accept(self)
         rhs = self.stack.pop()
         lhs = self.stack.pop()
+
+        is_float = isinstance(lhs.type, ir.DoubleType)
+
         if node.op == '+':
-            self.stack.append(builder.add(lhs, rhs))
+            instr = builder.fadd if is_float else builder.add
+            self.stack.append(instr(lhs, rhs))
         elif node.op == '-':
-            self.stack.append(builder.sub(lhs, rhs))
+            instr = builder.fsub if is_float else builder.sub
+            self.stack.append(instr(lhs, rhs))
         elif node.op == '*':
-            self.stack.append(builder.mul(lhs, rhs))
+            instr = builder.fmul if is_float else builder.mul
+            self.stack.append(instr(lhs, rhs))
         elif node.op == '/':
-            self.stack.append(builder.sdiv(lhs, rhs))
+            instr = builder.fdiv if is_float else builder.sdiv
+            self.stack.append(instr(lhs, rhs))
         elif node.op == '%':
-            self.stack.append(builder.srem(lhs, rhs))
-        elif node.op == '<':
-            result = builder.icmp_signed('<', lhs,rhs)
-            self.stack.append(result)
-        elif node.op == '<=':
-            result = builder.icmp_signed('<=', lhs,rhs)
-            self.stack.append(result)
-        elif node.op == '>':
-            result = builder.icmp_signed('>', lhs,rhs)
-            self.stack.append(result)
-        elif node.op == '>=':
-            result = builder.icmp_signed('>=', lhs,rhs)
-            self.stack.append(result)
-        elif node.op == '==':
-            result = builder.icmp_signed('==', lhs,rhs)
-            self.stack.append(result)
-        elif node.op == '!=':
-            result = builder.icmp_signed('!=', lhs,rhs)
-            self.stack.append(result)
+            instr = builder.frem if is_float else builder.srem
+            self.stack.append(instr(lhs, rhs))
+
+        elif node.op in ('<','<=','>','>=','==','!='):
+            if is_float:
+                pred_map = {
+                    '<':  'ULT', '<=': 'ULE',
+                    '>':  'UGT', '>=': 'UGE',
+                    '==': 'UEQ','!=': 'UNE',
+                }
+                pred = pred_map[node.op]
+                cmp = builder.fcmp_ordered(pred, lhs, rhs)
+            else:
+                cmp = builder.icmp_signed(node.op, lhs, rhs)
+            self.stack.append(cmp)
+
         elif node.op == '||':
-            result = builder.or_(lhs,rhs)
-            self.stack.append(result)
+            self.stack.append(builder.or_(lhs, rhs))
         elif node.op == '&&':
-            result = builder.and_(lhs,rhs)
-            self.stack.append(result)
+            self.stack.append(builder.and_(lhs, rhs))
+
         else:
             raise ValueError(f"Operador desconocido {node.op}")
-        
+
 #%%
 ast = parser.parse(data)
 visitor = IRGenerator()

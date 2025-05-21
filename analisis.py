@@ -444,8 +444,8 @@ int main() {
     do { x = x - 1; } while (x > 0);
     for (i = 0; i < 10; i = i + 1) {x = x + i;}
     switch (x) {
-        case 0: x = x + 1;
-        case 2: x = x + 2;
+        case 0: x = x + 1; break;
+        case 2: x = x + 2; break;
         default: x = x + 3;
     }
 }
@@ -615,13 +615,14 @@ class IRGenerator(Visitor):
             self.current_break_target = end_block
             self.visit_case_statements(case.stmts)
 
-            # If the block is not terminated, branch to the next case or the end block
+            # If the block is not terminated, branch to the next case, the default block or the end block
             if not builder.block.is_terminated:
-                next_block = (
-                    case_blocks[node.cases[i + 1].value]
-                    if i + 1 < len(node.cases)
-                    else end_block
-                )
+                if i + 1 < len(node.cases):
+                    next_block = case_blocks[node.cases[i + 1].value]
+                elif node.default:
+                    next_block = default_block
+                else:
+                    next_block = end_block
                 builder.branch(next_block)
 
         # Generate code for the default block, if it exists

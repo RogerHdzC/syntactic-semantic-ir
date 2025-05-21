@@ -444,7 +444,8 @@ int main() {
     do { x = x - 1; } while (x > 0);
     for (i = 0; i < 10; i = i + 1) {x = x + i;}
     switch (x) {
-        case 1: x = x + 1; break;
+        case 0: x = x + 1; 
+        case 2: x = x + 2;
     }
 }
 """
@@ -607,12 +608,6 @@ class IRGenerator(Visitor):
             switch_inst.add_case(ir.Constant(switch_val.type, value), block)
 
         # Generate code for each case block
-        for case in node.cases:
-            builder.position_at_start(case_blocks[case.value])
-            self.current_break_target = end_block
-            self.visit_case_statements(case.stmts)
-
-        # Generate code for each case block
         for i, case in enumerate(node.cases):
             builder.position_at_start(case_blocks[case.value])
             self.current_break_target = end_block
@@ -707,7 +702,7 @@ class IRGenerator(Visitor):
 ast = parser.parse(data)
 visitor = IRGenerator()
 ast.accept(visitor)
-print(module)
+# print(module)
 # %%
 import runtime as rt
 from ctypes import CFUNCTYPE, c_int

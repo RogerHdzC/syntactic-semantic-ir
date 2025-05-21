@@ -444,8 +444,9 @@ int main() {
     do { x = x - 1; } while (x > 0);
     for (i = 0; i < 10; i = i + 1) {x = x + i;}
     switch (x) {
-        case 0: x = x + 1; 
+        case 0: x = x + 1;
         case 2: x = x + 2;
+        default: x = x + 3;
     }
 }
 """
@@ -484,7 +485,8 @@ class IRGenerator(Visitor):
         for stmt in node.statements:
             stmt.accept(self)
 
-        builder.ret(ir.Constant(intType, 0))
+        if not builder.block.is_terminated:
+            builder.ret(ir.Constant(intType, 0))
 
     def visit_declaration(self, node: Declaration):
         ty = self.typemap[node.typ]
@@ -621,8 +623,16 @@ class IRGenerator(Visitor):
                     else end_block
                 )
                 builder.branch(next_block)
-            # Position the builder at the end block
-            builder.position_at_start(end_block)
+
+        # Generate code for the default block, if it exists
+        if node.default:
+            builder.position_at_start(default_block)
+            self.current_break_target = end_block
+            self.visit_case_statements(node.default.stmts)
+            if not builder.block.is_terminated:
+                builder.branch(end_block)
+
+        builder.position_at_start(end_block)
 
     def visit_case_statements(self, statements):
         for stmt in statements:

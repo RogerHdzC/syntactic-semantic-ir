@@ -1,87 +1,139 @@
 # %%
 import ply.lex as lex
 import ply.yacc as yacc
-from arbol import Literal, BinaryOp, Visitor, Variable, UnaryOp, WhileStatement, DoWhileStatement, ForStatement, IfStatement, Block, Assignment, Declaration, Program, FunctionDecl, CallExpr, CallStatement, ReturnStatement
 
-literals = ['+','-','*','/', '%', '(', ')', '{', '}', ';', '=', ',']
+from arbol import (
+    BreakStatement,
+    CaseClause,
+    DefaultClause,
+    Literal,
+    BinaryOp,
+    SwitchStatement,
+    Visitor,
+    Variable,
+    UnaryOp,
+    WhileStatement,
+    DoWhileStatement,
+    ForStatement,
+    IfStatement,
+    Block,
+    Assignment,
+    Declaration,
+    Program,
+    FunctionDecl,
+    CallExpr,
+    CallStatement,
+    ReturnStatement,
+)
+
+literals = ["+", "-", "*", "/", "%", "(", ")", "{", "}", ";", "=", ":", ","]
 reserved = {
-    'while': 'WHILE',
-    'if':    'IF',
-    'else':  'ELSE',
-    'int':   'INT',
-    'bool':  'BOOL',
-    'float': 'FLOAT',
-    'char':  'CHAR',
-    'main':  'MAIN',
-    'do':    'DO',
-    'for':   'FOR',
-    'return': 'RETURN'
+    "while": "WHILE",
+    "if": "IF",
+    "else": "ELSE",
+    "int": "INT",
+    "bool": "BOOL",
+    "float": "FLOAT",
+    "char": "CHAR",
+    "main": "MAIN",
+    "do": "DO",
+    "for": "FOR",
+    "switch": "SWITCH",
+    "case": "CASE",
+    "default": "DEFAULT",
+    "break": "BREAK",
+    "return": "RETURN",
 }
 tokens = [
-    'FLOATLIT', 'INTLIT', 'ID', 'OR', 'AND', 'LEQ', 'GEQ', 'LT', 'GT',
-    'EQ', 'NEQ', 'MINUS', 'PLUS', 'NOT',
+    "FLOATLIT",
+    "INTLIT",
+    "ID",
+    "OR",
+    "AND",
+    "LEQ",
+    "GEQ",
+    "LT",
+    "GT",
+    "EQ",
+    "NEQ",
+    "MINUS",
+    "PLUS",
+    "NOT",
+    "COLON",
 ] + list(reserved.values())
 
-t_ignore  = ' \t'
+t_ignore = " \t"
+
 
 def t_ID(t):
-    r'[a-zA-Z_][a-zA-Z_0-9]*'
-    t.type = reserved.get(t.value, 'ID')
+    r"[a-zA-Z_][a-zA-Z_0-9]*"
+    t.type = reserved.get(t.value, "ID")
     return t
 
+
 def t_FLOATLIT(t):
-    r'([0-9]+\.[0-9]*|\.[0-9]+)'
+    r"([0-9]+\.[0-9]*|\.[0-9]+)"
     t.value = float(t.value)
     return t
 
+
 def t_INTLIT(t):
-    r'[0-9]+'
+    r"[0-9]+"
     t.value = int(t.value)
     return t
 
+
 def t_newline(t):
-    r'\n+'
+    r"\n+"
     t.lexer.lineno += len(t.value)
 
-t_OR = r'\|\|'
-t_AND = r'&&'
-t_LT = r'<'
-t_LEQ = r'<='
-t_GT = r'>'
-t_GEQ = r'>='
-t_EQ = r'=='
-t_NEQ = r'!='
-t_MINUS = r'-'
-t_NOT = r'!'
-t_PLUS = r'\+'
+
+t_OR = r"\|\|"
+t_AND = r"&&"
+t_LT = r"<"
+t_LEQ = r"<="
+t_GT = r">"
+t_GEQ = r">="
+t_EQ = r"=="
+t_NEQ = r"!="
+t_MINUS = r"-"
+t_NOT = r"!"
+t_PLUS = r"\+"
+t_COLON = r":"
+
 
 def t_error(t):
     print(f"Illegal character '{t.value[0]}'")
     t.lexer.skip(1)
 
+
 # %%
 
 precedence = (
-    ('nonassoc', 'ELSE'),
-    ('right', 'NOT', 'UMINUS'),
-    ('left',  'OR'),
-    ('left',  'AND'),
-    ('nonassoc', 'EQ', 'NEQ'),
-    ('nonassoc', 'LT', 'LEQ', 'GT', 'GEQ'),
-    ('left',  'PLUS', 'MINUS'),
-    ('left',  '*', '/', '%'),
+    ("nonassoc", "ELSE"),
+    ("right", "NOT", "UMINUS"),
+    ("left", "OR"),
+    ("left", "AND"),
+    ("nonassoc", "EQ", "NEQ"),
+    ("nonassoc", "LT", "LEQ", "GT", "GEQ"),
+    ("left", "PLUS", "MINUS"),
+    ("left", "*", "/", "%"),
 )
+
+
 def p_empty(p):
     """
     empty :
     """
     p[0] = []
 
+
 def p_program(p):
     """
     program : functions
     """
     p[0] = Program(p[1])
+
 
 def p_functions(p):
     """
@@ -94,28 +146,32 @@ def p_functions(p):
     else:
         p[0] = []
 
+
 def p_return_statement(p):
     """
     return_statement : RETURN expression_opt ";"
     """
     p[0] = ReturnStatement(p[2])
 
+
 def p_function(p):
     """
     function : type ID "(" parameters ")" "{" declarations statements "}"
     """
     ret_type = p[1]
-    name     = p[2]
-    params   = p[4]    # lista de pares (tipo, id)
-    decls    = p[7]
-    stmts    = p[8]
+    name = p[2]
+    params = p[4]  # lista de pares (tipo, id)
+    decls = p[7]
+    stmts = p[8]
     p[0] = FunctionDecl(ret_type, name, params, decls, stmts)
+
 
 def p_mainfunction(p):
     """
     mainfunction : INT MAIN "(" ")" "{" declarations statements "}"
     """
-    p[0] = FunctionDecl('INT', 'main', [], p[6], p[7])
+    p[0] = FunctionDecl("INT", "main", [], p[6], p[7])
+
 
 def p_call_statement(p):
     """
@@ -123,12 +179,14 @@ def p_call_statement(p):
     """
     p[0] = CallStatement(p[1], p[3])
 
+
 def p_arguments(p):
     """
     arguments : expression_list
               | empty
     """
     p[0] = p[1]
+
 
 def p_expression_list(p):
     """
@@ -140,12 +198,14 @@ def p_expression_list(p):
     else:
         p[0] = [p[1]] + p[3]
 
+
 def p_parameters(p):
     """
     parameters : parameter_list
                | empty
     """
     p[0] = p[1]
+
 
 def p_parameter_list(p):
     """
@@ -157,11 +217,13 @@ def p_parameter_list(p):
     else:
         p[0] = [p[1]] + p[3]
 
+
 def p_parameter(p):
     """
     parameter : type ID
     """
     p[0] = (p[1], p[2])
+
 
 def p_declarations(p):
     """
@@ -173,6 +235,7 @@ def p_declarations(p):
     else:
         p[0] = []
 
+
 def p_declaration(p):
     """
     declaration : type ID ";"
@@ -183,6 +246,7 @@ def p_declaration(p):
     else:
         p[0] = Declaration(p[1], p[2], p[4])
 
+
 def p_type(p):
     """
     type : INT
@@ -191,6 +255,7 @@ def p_type(p):
          | CHAR
     """
     p[0] = p.slice[1].type
+
 
 def p_statements(p):
     """
@@ -201,6 +266,7 @@ def p_statements(p):
         p[0] = [p[1]] + p[2]
     else:
         p[0] = []
+
 
 def p_statement(p):
     """
@@ -213,14 +279,18 @@ def p_statement(p):
               | for_statement
               | return_statement
               | call_statement
+              | switch_statement
+              | break_statement
     """
     p[0] = p[1]
 
+
 def p_block(p):
     """
-    block : '{' statements '}' 
+    block : '{' statements '}'
     """
     p[0] = Block(p[2])
+
 
 def p_assignment_no_semi(p):
     """
@@ -228,18 +298,21 @@ def p_assignment_no_semi(p):
     """
     p[0] = Assignment(p[1], p[3])
 
+
 def p_assignment(p):
     """
     assignment : assignment_no_semi ';'
     """
     p[0] = p[1]
 
+
 def p_assignment_opt(p):
     """
-    assignment_opt : assignment_no_semi 
+    assignment_opt : assignment_no_semi
                    | empty
     """
     p[0] = p[1]
+
 
 def p_if_statement(p):
     """
@@ -251,6 +324,7 @@ def p_if_statement(p):
     else:
         p[0] = IfStatement(p[3], p[5], None)
 
+
 def p_for_statement(p):
     """
     for_statement : FOR '(' assignment_opt ';' expression_opt ';' assignment_opt ')' statement
@@ -261,18 +335,62 @@ def p_for_statement(p):
     body = p[9]
     p[0] = ForStatement(init, cond, post, body)
 
+
 def p_do_while_statement(p):
     """
     do_while_statement : DO statement WHILE '(' expression ')' ';'
     """
     p[0] = DoWhileStatement(p[5], p[2])
 
+
 def p_while_statement(p):
     """
     while_statement : WHILE '(' expression ')' statement
     """
-    
+
     p[0] = WhileStatement(p[3], p[5])
+
+
+def p_switch_statement(p):
+    """
+    switch_statement : SWITCH '(' expression ')' '{' case_clauses default_clause_opt '}'
+    """
+    p[0] = SwitchStatement(p[3], p[6], p[7])
+
+
+def p_case_clauses(p):
+    """
+    case_clauses : case_clause case_clauses
+                 | empty
+    """
+    if len(p) == 3:
+        p[0] = [p[1]] + p[2]
+    else:
+        p[0] = []
+
+
+def p_case_clause(p):
+    """
+    case_clause : CASE INTLIT COLON statements
+    """
+    p[0] = CaseClause(p[2], p[4])
+
+
+def p_default_clause_opt(p):
+    """
+    default_clause_opt : DEFAULT COLON statements
+                       | empty
+    """
+    if len(p) == 4:
+        p[0] = DefaultClause(p[3])
+    else:
+        p[0] = None
+
+
+def p_break_statement(p):
+    "break_statement : BREAK ';'"
+    p[0] = BreakStatement()
+
 
 def p_expression_opt(p):
     """
@@ -281,9 +399,10 @@ def p_expression_opt(p):
     """
     p[0] = p[1]
 
+
 def p_expression(p):
-    """ 
-    expression : expression OR conjunction 
+    """
+    expression : expression OR conjunction
                | conjunction
     """
     if len(p) == 2:
@@ -291,9 +410,10 @@ def p_expression(p):
     else:
         p[0] = BinaryOp(p[2], p[1], p[3])
 
+
 def p_conjunction(p):
-    """ 
-    conjunction : conjunction AND equality 
+    """
+    conjunction : conjunction AND equality
                 | equality
     """
     if len(p) == 2:
@@ -301,9 +421,10 @@ def p_conjunction(p):
     else:
         p[0] = BinaryOp(p[2], p[1], p[3])
 
+
 def p_equality(p):
-    """ 
-    equality : relation equ_op relation 
+    """
+    equality : relation equ_op relation
              | relation
     """
     if len(p) == 2:
@@ -311,16 +432,18 @@ def p_equality(p):
     else:
         p[0] = BinaryOp(p[2], p[1], p[3])
 
+
 def p_equ_op(p):
-    """ 
-    equ_op : EQ 
+    """
+    equ_op : EQ
            | NEQ
     """
     p[0] = p[1]
 
+
 def p_relation(p):
-    """ 
-    relation : addition rel_op addition 
+    """
+    relation : addition rel_op addition
              | addition
     """
     if len(p) == 2:
@@ -328,18 +451,20 @@ def p_relation(p):
     else:
         p[0] = BinaryOp(p[2], p[1], p[3])
 
+
 def p_rel_op(p):
-    """ 
-    rel_op : LT 
+    """
+    rel_op : LT
            | LEQ
-           | GT 
+           | GT
            | GEQ
     """
     p[0] = p[1]
 
+
 def p_addition(p):
-    """ 
-    addition : addition add_op term 
+    """
+    addition : addition add_op term
              | term
     """
     if len(p) == 2:
@@ -347,16 +472,18 @@ def p_addition(p):
     else:
         p[0] = BinaryOp(p[2], p[1], p[3])
 
+
 def p_add_op(p):
-    """ 
-    add_op : PLUS 
+    """
+    add_op : PLUS
            | MINUS
     """
     p[0] = p[1]
 
+
 def p_term(p):
-    """ 
-    term : term mul_op factor 
+    """
+    term : term mul_op factor
          | factor
     """
     if len(p) == 2:
@@ -364,13 +491,15 @@ def p_term(p):
     else:
         p[0] = BinaryOp(p[2], p[1], p[3])
 
+
 def p_mul_op(p):
-    """ 
-    mul_op : '*' 
-           | '/' 
+    """
+    mul_op : '*'
+           | '/'
            | '%'
     """
     p[0] = p[1]
+
 
 def p_factor(p):
     """
@@ -381,10 +510,11 @@ def p_factor(p):
         p[0] = p[1]
     else:
         p[0] = UnaryOp(p[1], p[2])
-    
+
+
 def p_unary_op(p):
     """unary_op : MINUS %prec UMINUS
-                | NOT   %prec NOT"""
+    | NOT   %prec NOT"""
     p[0] = p[1]
 
 
@@ -398,18 +528,20 @@ def p_primary(p):
     """
     if len(p) == 2:
         if isinstance(p[1], int):
-            p[0] = Literal(p[1], 'INT')
+            p[0] = Literal(p[1], "INT")
         elif isinstance(p[1], float):
-            p[0] = Literal(p[1], 'FLOAT')
+            p[0] = Literal(p[1], "FLOAT")
         else:
             p[0] = Variable(p[1])
-    elif p[2] == '(':
+    elif p[2] == "(":
         p[0] = CallExpr(p[1], p[3])
     else:
         p[0] = p[2]
-    
+
+
 def p_error(p):
     print(f"Syntax error at '{p.value}'")
+
 
 # %%
 data = """
@@ -420,12 +552,27 @@ int add(int a, int b) {
 }
 
 int main() {
-  int x;
-  x = add(3, 4);
+    int x;
+    int y;
+    int i;
+    bool flag;
+    flag = -flag;
+    flag = !flag ;
+    y = 2 - 1; 
+    x = 0;
+    if (x < 3) { x = x + 1; } else { x = x - 1; }
+    while (x > 0) { x = x - 1; }
+    do { x = x - 1; } while (x > 0);
+    for (i = 0; i < 10; i = i + 1) {x = x + i;}
+    switch (x) {
+        case 0: x = x + 1; 
+        case 2: x = x + 2; 
+        default: x = x + 3;
+    }
 }
 """
-lexer  = lex.lex()
-parser = yacc.yacc(start='program')
+lexer = lex.lex()
+parser = yacc.yacc(start="program")
 ast = parser.parse(data)
 
 # %%
@@ -434,34 +581,35 @@ from llvmlite import ir
 intType = ir.IntType(32)
 module = ir.Module(name="prog")
 
+
 class IRGenerator(Visitor):
     def __init__(self, module: ir.Module):
-        self.module  = module
-        self.builder = None
-        self.func    = None
+        self.module = module
+        self.builder: ir.IRBuilder = None
+        self.fn: ir.Function = None
         self.symbols = {}
-        self.stack   = []
+        self.stack = []
         self.typemap = {
-            'INT':   ir.IntType(32),
-            'BOOL':  ir.IntType(1),
-            'FLOAT': ir.DoubleType(),
-            'CHAR':  ir.IntType(8),
+            "INT": ir.IntType(32),
+            "BOOL": ir.IntType(1),
+            "FLOAT": ir.DoubleType(),
+            "CHAR": ir.IntType(8),
         }
 
     def visit_program(self, node: Program):
         for fn in node.functions:
             self.visit_function_decl(fn)
-    
-    def visit_function_decl(self, node: FunctionDecl):
-        param_types = [ self.typemap[t] for t,_ in node.params ]
-        fn_ty = ir.FunctionType(self.typemap[node.ret_type], param_types)
-        fn    = ir.Function(self.module, fn_ty, name=node.name)
-        
-        entry = fn.append_basic_block('entry')
-        self.builder = ir.IRBuilder(entry)
-        self.func    = fn
 
-        for i,(_, name) in enumerate(node.params):
+    def visit_function_decl(self, node: FunctionDecl):
+        param_types = [self.typemap[t] for t, _ in node.params]
+        fn_ty = ir.FunctionType(self.typemap[node.ret_type], param_types)
+        fn = ir.Function(self.module, fn_ty, name=node.name)
+
+        entry = fn.append_basic_block("entry")
+        self.builder = ir.IRBuilder(entry)
+        self.func = fn
+
+        for i, (_, name) in enumerate(node.params):
             alloca = self.builder.alloca(fn.args[i].type, name=name)
             self.builder.store(fn.args[i], alloca)
             self.symbols[name] = alloca
@@ -473,8 +621,8 @@ class IRGenerator(Visitor):
             stmt.accept(self)
 
         if not fn.blocks[-1].is_terminated:
-            if node.ret_type == 'INT':
-                self.builder.ret(ir.Constant(self.typemap['INT'], 0))
+            if node.ret_type == "INT":
+                self.builder.ret(ir.Constant(self.typemap["INT"], 0))
             else:
                 self.builder.ret(ir.Constant(self.typemap[node.ret_type], 0.0))
 
@@ -498,14 +646,14 @@ class IRGenerator(Visitor):
         val = self.stack.pop()
         ptr = self.symbols[node.identifier]
         self.builder.store(val, ptr)
-    
+
     def visit_if_statement(self, node: IfStatement):
         node.condition.accept(self)
         cond = self.stack.pop()
 
-        then_bb = self.func.append_basic_block('if.then')
-        else_bb = self.func.append_basic_block('if.else') if node.else_stmt else None
-        merge_bb = self.func.append_basic_block('if.end')
+        then_bb = self.func.append_basic_block("if.then")
+        else_bb = self.func.append_basic_block("if.else") if node.else_stmt else None
+        merge_bb = self.func.append_basic_block("if.end")
 
         if node.else_stmt:
             self.builder.cbranch(cond, then_bb, else_bb)
@@ -524,27 +672,23 @@ class IRGenerator(Visitor):
         self.builder.position_at_start(merge_bb)
 
     def visit_while_statement(self, node: WhileStatement):
-        whileHead = self.func.append_basic_block('while-head')
-        whileBody = self.func.append_basic_block('while-body')
-        whileExit = self.func.append_basic_block('while-exit')
+        whileHead = self.func.append_basic_block("while-head")
+        whileBody = self.func.append_basic_block("while-body")
+        whileExit = self.func.append_basic_block("while-exit")
         self.builder.branch(whileHead)
         self.builder.position_at_start(whileHead)
         node.condition.accept(self)
         condition = self.stack.pop()
-        self.builder.cbranch(
-            condition,
-            whileBody,
-            whileExit
-        )
+        self.builder.cbranch(condition, whileBody, whileExit)
         self.builder.position_at_start(whileBody)
         node.statement.accept(self)
         self.builder.branch(whileHead)
         self.builder.position_at_start(whileExit)
 
     def visit_do_while_statement(self, node: DoWhileStatement):
-        doBody = self.func.append_basic_block('do.body')
-        doCond = self.func.append_basic_block('do.cond')
-        doExit = self.func.append_basic_block('do.exit')
+        doBody = self.func.append_basic_block("do.body")
+        doCond = self.func.append_basic_block("do.cond")
+        doExit = self.func.append_basic_block("do.exit")
         self.builder.branch(doBody)
         self.builder.position_at_start(doBody)
         node.body.accept(self)
@@ -560,10 +704,10 @@ class IRGenerator(Visitor):
         if node.init:
             node.init.accept(self)
 
-        condBB = self.func.append_basic_block('for.cond')
-        bodyBB = self.func.append_basic_block('for.body')
-        postBB = self.func.append_basic_block('for.post')
-        exitBB = self.func.append_basic_block('for.exit')
+            condBB = self.func.append_basic_block("for.cond")
+        bodyBB = self.func.append_basic_block("for.body")
+        postBB = self.func.append_basic_block("for.post")
+        exitBB = self.func.append_basic_block("for.exit")
         self.builder.branch(condBB)
         self.builder.position_at_start(condBB)
         if node.condition:
@@ -581,26 +725,96 @@ class IRGenerator(Visitor):
         self.builder.branch(condBB)
         self.builder.position_at_start(exitBB)
 
+    def visit_switch_statement(self, node):
+        # Create the end block for the switch statement
+        end_block = self.func.append_basic_block("switch.end")
+
+        # Evaluate the switch expression and store its value
+        node.expr.accept(self)
+        switch_val = self.stack.pop()
+
+        # Create basic blocks for each case and the default case
+        case_blocks = {}
+        for case in node.cases:
+            case_blocks[case.value] = self.func.append_basic_block(f"case_{case.value}")
+        default_block = (
+            self.func.append_basic_block("default") if node.default else end_block
+        )
+
+        # Create the switch instruction
+        switch_inst = self.builder.switch(switch_val, default_block)
+        for value, block in case_blocks.items():
+            switch_inst.add_case(ir.Constant(switch_val.type, value), block)
+
+        # Generate code for each case block
+        for i, case in enumerate(node.cases):
+            self.builder.position_at_start(case_blocks[case.value])
+            self.current_break_target = end_block
+            self.visit_case_statements(case.stmts)
+
+            # If the block is not terminated, branch to the next case, the default block or the end block
+            if not self.builder.block.is_terminated:
+                if i + 1 < len(node.cases):
+                    next_block = case_blocks[node.cases[i + 1].value]
+                elif node.default:
+                    next_block = default_block
+                else:
+                    next_block = end_block
+                self.builder.branch(next_block)
+
+        # Generate code for the default block, if it exists
+        if node.default:
+            self.builder.position_at_start(default_block)
+            self.current_break_target = end_block
+            self.visit_case_statements(node.default.stmts)
+            if not self.builder.block.is_terminated:
+                self.builder.branch(end_block)
+
+        self.builder.position_at_start(end_block)
+        if self.func.function_type.return_type == ir.IntType(32):
+            self.builder.ret(ir.Constant(ir.IntType(32), 0))
+        elif self.func.function_type.return_type == ir.DoubleType():
+            self.builder.ret(ir.Constant(ir.DoubleType(), 0.0))
+        elif self.func.function_type.return_type == ir.IntType(1):
+            self.builder.ret(ir.Constant(ir.IntType(1), 0))
+        else:
+            self.builder.ret_void()
+
+    def visit_case_statements(self, statements):
+        for stmt in statements:
+            stmt.accept(self)
+
+    def visit_break_statement(self, node):
+        if self.current_break_target is None:
+            raise Exception("Out of context for break statement")
+        self.builder.branch(self.current_break_target)
+
     def visit_variable(self, node: Variable):
         ptr = self.symbols[node.name]
         self.stack.append(self.builder.load(ptr))
-    
+
     def visit_literal(self, node: Literal):
-        const = (ir.Constant(self.typemap['FLOAT'], node.value)
-                 if node.type=='FLOAT'
-                 else ir.Constant(self.typemap[node.type], node.value))
+        const = (
+            ir.Constant(self.typemap["FLOAT"], node.value)
+            if node.type == "FLOAT"
+            else ir.Constant(self.typemap[node.type], node.value)
+        )
         self.stack.append(const)
-    
+
     def visit_unary_op(self, node: UnaryOp):
         node.operand.accept(self)
         v = self.stack.pop()
-        if node.op == '-':
+        if node.op == "-":
             zero = ir.Constant(v.type, 0)
-            op = self.builder.fsub if isinstance(v.type, ir.DoubleType) else self.builder.sub
+            op = (
+                self.builder.fsub
+                if isinstance(v.type, ir.DoubleType)
+                else self.builder.sub
+            )
             self.stack.append(op(zero, v))
         else:
             zero = ir.Constant(v.type, 0)
-            self.stack.append(self.builder.icmp_signed('==', v, zero))
+            self.stack.append(self.builder.icmp_signed("==", v, zero))
 
     def visit_binary_op(self, node: BinaryOp) -> None:
         node.lhs.accept(self)
@@ -610,28 +824,31 @@ class IRGenerator(Visitor):
 
         is_float = isinstance(lhs.type, ir.DoubleType)
 
-        if node.op == '+':
+        if node.op == "+":
             instr = self.builder.fadd if is_float else self.builder.add
             self.stack.append(instr(lhs, rhs))
-        elif node.op == '-':
+        elif node.op == "-":
             instr = self.builder.fsub if is_float else self.builder.sub
             self.stack.append(instr(lhs, rhs))
-        elif node.op == '*':
+        elif node.op == "*":
             instr = self.builder.fmul if is_float else self.builder.mul
             self.stack.append(instr(lhs, rhs))
-        elif node.op == '/':
+        elif node.op == "/":
             instr = self.builder.fdiv if is_float else self.builder.sdiv
             self.stack.append(instr(lhs, rhs))
-        elif node.op == '%':
+        elif node.op == "%":
             instr = self.builder.frem if is_float else self.builder.srem
             self.stack.append(instr(lhs, rhs))
 
-        elif node.op in ('<','<=','>','>=','==','!='):
+        elif node.op in ("<", "<=", ">", ">=", "==", "!="):
             if is_float:
                 pred_map = {
-                    '<':  'ULT', '<=': 'ULE',
-                    '>':  'UGT', '>=': 'UGE',
-                    '==': 'UEQ','!=': 'UNE',
+                    "<": "ULT",
+                    "<=": "ULE",
+                    ">": "UGT",
+                    ">=": "UGE",
+                    "==": "UEQ",
+                    "!=": "UNE",
                 }
                 pred = pred_map[node.op]
                 cmp = self.builder.fcmp_ordered(pred, lhs, rhs)
@@ -639,9 +856,9 @@ class IRGenerator(Visitor):
                 cmp = self.builder.icmp_signed(node.op, lhs, rhs)
             self.stack.append(cmp)
 
-        elif node.op == '||':
+        elif node.op == "||":
             self.stack.append(self.builder.or_(lhs, rhs))
-        elif node.op == '&&':
+        elif node.op == "&&":
             self.stack.append(self.builder.and_(lhs, rhs))
 
         else:
@@ -653,7 +870,7 @@ class IRGenerator(Visitor):
             val = self.stack.pop()
             self.builder.ret(val)
         else:
-            self.builder.ret(ir.Constant(self.typemap['INT'], 0))
+            self.builder.ret(ir.Constant(self.typemap["INT"], 0))
 
     def visit_call_expr(self, node: CallExpr):
         args = []
@@ -671,11 +888,13 @@ class IRGenerator(Visitor):
             args.append(self.stack.pop())
         fn = self.module.get_global(node.name)
         self.builder.call(fn, args)
-#%%
+
+
+# %%
 ast = parser.parse(data)
 visitor = IRGenerator(module)
 ast.accept(visitor)
-print(module)
+# print(module)
 # %%
 import runtime as rt
 from ctypes import CFUNCTYPE, c_int

@@ -771,6 +771,14 @@ class IRGenerator(Visitor):
                 self.builder.branch(end_block)
 
         self.builder.position_at_start(end_block)
+        if self.func.function_type.return_type == ir.IntType(32):
+            self.builder.ret(ir.Constant(ir.IntType(32), 0))
+        elif self.func.function_type.return_type == ir.DoubleType():
+            self.builder.ret(ir.Constant(ir.DoubleType(), 0.0))
+        elif self.func.function_type.return_type == ir.IntType(1):
+            self.builder.ret(ir.Constant(ir.IntType(1), 0))
+        else:
+            self.builder.ret_void()
 
     def visit_case_statements(self, statements):
         for stmt in statements:
@@ -886,7 +894,7 @@ class IRGenerator(Visitor):
 ast = parser.parse(data)
 visitor = IRGenerator(module)
 ast.accept(visitor)
-print(module)
+# print(module)
 # %%
 import runtime as rt
 from ctypes import CFUNCTYPE, c_int

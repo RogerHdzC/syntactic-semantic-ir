@@ -7,7 +7,14 @@ class ASTNode(ABC):
     @abstractmethod
     def accept(self, visitor: Visitor) -> None:
         pass
+    
+class Cast(ASTNode):
+    def __init__(self, target_type: str, expr: ASTNode) -> None:
+        self.target_type = target_type
+        self.expr = expr
 
+    def accept(self, visitor: Visitor) -> Any:
+        return visitor.visit_cast(self)
 
 class Literal(ASTNode):
     def __init__(self, value: Any, type: str) -> None:
@@ -234,6 +241,9 @@ class Visitor(ABC):
         pass
     @abstractmethod
     def visit_return_statement(self, node: ReturnStatement) -> None:
+        pass
+    @abstractmethod
+    def visit_cast(self, node: Cast) -> None:
         pass
 
 class Calculator(Visitor):

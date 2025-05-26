@@ -1,6 +1,9 @@
 # %%
 import ply.lex as lex
 import ply.yacc as yacc
+from llvmlite import ir
+import runtime as rt
+from ctypes import CFUNCTYPE, c_int
 
 from arbol import (
     BreakStatement,
@@ -24,46 +27,31 @@ from arbol import (
     CallExpr,
     CallStatement,
     ReturnStatement,
+    Cast
 )
 
+# %%
 literals = ["+", "-", "*", "/", "%", "(", ")", "{", "}", ";", "=", ":", ","]
 reserved = {
-    "while": "WHILE",
-    "if": "IF",
-    "else": "ELSE",
-    "int": "INT",
-    "bool": "BOOL",
-    "float": "FLOAT",
-    "char": "CHAR",
-    "main": "MAIN",
-    "do": "DO",
-    "for": "FOR",
-    "switch": "SWITCH",
-    "case": "CASE",
-    "default": "DEFAULT",
-    "break": "BREAK",
-    "return": "RETURN",
+    "while": "WHILE", "if": "IF", "else": "ELSE",
+    "int": "INT", "bool": "BOOL", "float": "FLOAT", "char": "CHAR",
+    "main": "MAIN", "do": "DO", "for": "FOR",
+    "switch": "SWITCH", "case": "CASE", "default": "DEFAULT",
+    "break": "BREAK", "return": "RETURN",
 }
 tokens = [
-    "FLOATLIT",
-    "INTLIT",
-    "ID",
-    "OR",
-    "AND",
-    "LEQ",
-    "GEQ",
-    "LT",
-    "GT",
-    "EQ",
-    "NEQ",
-    "MINUS",
-    "PLUS",
-    "NOT",
-    "COLON",
+    "FLOATLIT", "INTLIT", "ID", "STRINGLIT",
+    "OR", "AND", "LEQ", "GEQ", "LT", "GT", "EQ", "NEQ",
+    "MINUS", "PLUS", "NOT", "COLON",
 ] + list(reserved.values())
 
 t_ignore = " \t"
+t_ignore_COMMENT = r"//.*"  # ignora comentarios de línea
 
+def t_STRINGLIT(t):
+    r'"([^"\\]|\\.)*"'
+    t.value = t.value[1:-1]  # elimina comillas
+    return t
 
 def t_ID(t):
     r"[a-zA-Z_][a-zA-Z_0-9]*"
@@ -87,24 +75,24 @@ def t_newline(t):
     r"\n+"
     t.lexer.lineno += len(t.value)
 
-
-t_OR = r"\|\|"
-t_AND = r"&&"
-t_LT = r"<"
-t_LEQ = r"<="
-t_GT = r">"
-t_GEQ = r">="
-t_EQ = r"=="
-t_NEQ = r"!="
+t_OR    = r"\|\|"
+t_AND   = r"&&"
+t_LT    = r"<"
+t_LEQ   = r"<="
+t_GT    = r">"
+t_GEQ   = r">="
+t_EQ    = r"=="
+t_NEQ   = r"!="
 t_MINUS = r"-"
-t_NOT = r"!"
-t_PLUS = r"\+"
+t_NOT   = r"!"
+t_PLUS  = r"\+"
 t_COLON = r":"
 
 
 def t_error(t):
     print(f"Illegal character '{t.value[0]}'")
     t.lexer.skip(1)
+
 
 
 # %%
@@ -158,12 +146,7 @@ def p_function(p):
     """
     function : type ID "(" parameters ")" "{" declarations statements "}"
     """
-    ret_type = p[1]
-    name = p[2]
-    params = p[4]  # lista de pares (tipo, id)
-    decls = p[7]
-    stmts = p[8]
-    p[0] = FunctionDecl(ret_type, name, params, decls, stmts)
+    p[0] = FunctionDecl(p[1], p[2], p[4], p[7], p[8])
 
 
 def p_mainfunction(p):
@@ -272,6 +255,7 @@ def p_statement(p):
     """
     statement : ';'
               | block
+              | declaration
               | assignment
               | if_statement
               | while_statement
@@ -329,11 +313,7 @@ def p_for_statement(p):
     """
     for_statement : FOR '(' assignment_opt ';' expression_opt ';' assignment_opt ')' statement
     """
-    init = p[3]
-    cond = p[5]
-    post = p[7]
-    body = p[9]
-    p[0] = ForStatement(init, cond, post, body)
+    p[0] = ForStatement(p[3], p[5], p[7], p[9])
 
 
 def p_do_while_statement(p):
@@ -514,30 +494,36 @@ def p_factor(p):
 
 def p_unary_op(p):
     """unary_op : MINUS %prec UMINUS
-    | NOT   %prec NOT"""
+                | NOT   %prec NOT"""
     p[0] = p[1]
 
 
 def p_primary(p):
     """
-    primary : INTLIT
+    primary : '(' type ')' primary
+            | ID '(' arguments ')'
+            | INTLIT
             | FLOATLIT
-            | ID "(" arguments ")"
+            | STRINGLIT
             | ID
             | '(' expression ')'
     """
-    if len(p) == 2:
-        if isinstance(p[1], int):
+    if len(p) == 5 and isinstance(p[2], str) and p[2] in ("INT","FLOAT","BOOL","CHAR"):
+        p[0] = Cast(p[2], p[4])
+    elif len(p) == 5 and p.slice[1].type == "ID":
+        p[0] = CallExpr(p[1], p[3])
+    elif len(p) == 2:
+        tok = p.slice[1].type
+        if tok == "INTLIT":
             p[0] = Literal(p[1], "INT")
-        elif isinstance(p[1], float):
+        elif tok == "FLOATLIT":
             p[0] = Literal(p[1], "FLOAT")
+        elif tok == "STRINGLIT":
+            p[0] = Literal(p[1], "STRING")
         else:
             p[0] = Variable(p[1])
-    elif p[2] == "(":
-        p[0] = CallExpr(p[1], p[3])
     else:
         p[0] = p[2]
-
 
 def p_error(p):
     print(f"Syntax error at '{p.value}'")
@@ -545,41 +531,39 @@ def p_error(p):
 
 # %%
 data = """
+int perimetroCirculo(float r) {
+    float p = 2.0 * 3.14159 * r;
+    return (int)p;
+}
+int add(int a, int b) { return a + b; }
 int factorial(int n) {
-    if (n <= 1) {
-        return 1;
-    } else {
-        return n * factorial(n - 1);
-    }
+    if (n <= 1) return 1;
+    else return n * factorial(n - 1);
 }
-
-int add(int a, int b) {
-  int result;
-  result = a + b;
-  return result;
-}
-
 int main() {
-    int x;
-    int y;
-    int i;
-    int result;
-    bool flag;
-    flag = -flag;
-    flag = !flag ;
-    y = 2 - 1; 
-    x = 0;
-    if (x < 3) { x = x + 1; } else { x = x - 1; }
-    while (x > 0) { x = x - 1; }
-    do { x = x - 1; } while (x > 0);
-    for (i = 0; i < 10; i = i + 1) {x = x + i;}
-    switch (x) {
-        case 0: x = x + 1; 
-        case 2: x = x + 2; 
-        default: x = x + 3;
+    int x = 3;
+    if (x > 0) { printf("if: x=%d\n", x); }
+    else        { printf("else: x=%d\n", x); }
+    int i = 0;
+    while (i < 2) {
+        printf("while: i=%d\n", i);
+        i = i + 1;
     }
-    result = factorial(x);
-    
+    i = 0;
+    do {
+        printf("do-while: i=%d\n", i);
+        i = i + 1;
+    } while (i < 2);
+    for (i = 0; i < 2; i = i + 1) {
+        printf("for: i=%d\n", i);
+    }
+    switch (x) {
+        case 3: printf("switch: x==3\n"); break;
+        default: printf("switch: default\n");
+    }
+    printf("perimetro: %d\n", perimetroCirculo(5.0));
+    printf("add: %d\n", add(2,3));
+    printf("fact: %d\n", factorial(5));
     return 0;
 }
 """
@@ -588,7 +572,6 @@ parser = yacc.yacc(start="program")
 ast = parser.parse(data)
 
 # %%
-from llvmlite import ir
 
 intType = ir.IntType(32)
 module = ir.Module(name="prog")
@@ -607,6 +590,36 @@ class IRGenerator(Visitor):
             "FLOAT": ir.DoubleType(),
             "CHAR": ir.IntType(8),
         }
+        voidptr = ir.IntType(8).as_pointer()
+        printf_ty = ir.FunctionType(ir.IntType(32), [voidptr], var_arg=True)
+        self.printf = ir.Function(module, printf_ty, name="printf")
+        self.strings = {}
+    
+    def _get_str_constant(self, text):
+        if text in self.strings:
+            return self.strings[text]
+        arr = bytearray(text.encode("utf8"))
+        const = ir.Constant(ir.ArrayType(ir.IntType(8), len(arr)), arr)
+        gv = ir.GlobalVariable(self.module, const.type, name=f".str{len(self.strings)}")
+        gv.linkage = "internal"
+        gv.global_constant = True
+        gv.initializer = const
+        self.strings[text] = gv
+        return gv
+    
+    def visit_cast(self, node: Cast):
+        # primero baja el valor
+        node.expr.accept(self)
+        val = self.stack.pop()
+        from_ty = val.type
+        to_ty = self.typemap[node.target_type]
+        if isinstance(from_ty, ir.DoubleType) and isinstance(to_ty, ir.IntType):
+            casted = self.builder.fptosi(val, to_ty)
+        elif isinstance(from_ty, ir.IntType) and isinstance(to_ty, ir.DoubleType):
+            casted = self.builder.sitofp(val, to_ty)
+        else:
+            casted = val
+        self.stack.append(casted)
 
     def visit_program(self, node: Program):
         for fn in node.functions:
@@ -880,21 +893,29 @@ class IRGenerator(Visitor):
             self.builder.ret(ir.Constant(self.typemap["INT"], 0))
 
     def visit_call_expr(self, node: CallExpr):
-        args = []
-        for arg in node.arguments:
-            arg.accept(self)
-            args.append(self.stack.pop())
-        fn = self.module.get_global(node.name)
-        call = self.builder.call(fn, args)
-        self.stack.append(call)
+        if node.name == "printf":
+            fmt_lit = node.arguments[0]
+            assert isinstance(fmt_lit, Literal) and fmt_lit.type == "STRING"
+            fmt_text = fmt_lit.value + "\0"
+            gv = self._get_str_constant(fmt_text)
+            ptr = self.builder.bitcast(gv, ir.IntType(8).as_pointer())
+            args = [ptr]
+            for arg in node.arguments[1:]:
+                arg.accept(self)
+                args.append(self.stack.pop())
+            call = self.builder.call(self.printf, args)
+            self.stack.append(call)
+        else:
+            args = []
+            for arg in node.arguments:
+                arg.accept(self)
+                args.append(self.stack.pop())
+            fn = self.module.get_global(node.name)
+            call = self.builder.call(fn, args)
+            self.stack.append(call)
 
     def visit_call_statement(self, node: CallStatement):
-        args = []
-        for arg in node.arguments:
-            arg.accept(self)
-            args.append(self.stack.pop())
-        fn = self.module.get_global(node.name)
-        self.builder.call(fn, args)
+        self.visit_call_expr(CallExpr(node.name, node.arguments))
 
 
 # %%
@@ -903,8 +924,7 @@ visitor = IRGenerator(module)
 ast.accept(visitor)
 print(module)
 # %%
-import runtime as rt
-from ctypes import CFUNCTYPE, c_int
+
 
 engine = rt.create_execution_engine()
 mod = rt.compile_ir(engine, str(module))

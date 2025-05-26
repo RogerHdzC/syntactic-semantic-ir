@@ -31,18 +31,19 @@ from arbol import (
 )
 
 # %%
-literals = ["+", "-", "*", "/", "%", "(", ")", "{", "}", ";", "=", ":", ","]
+literals = ["*", "/", "%", "(", ")", "{", "}", ";", "=", ":", ","]
 reserved = {
     "while": "WHILE", "if": "IF", "else": "ELSE",
     "int": "INT", "bool": "BOOL", "float": "FLOAT", "char": "CHAR",
     "main": "MAIN", "do": "DO", "for": "FOR",
+    "const": "CONST",
     "switch": "SWITCH", "case": "CASE", "default": "DEFAULT",
     "break": "BREAK", "return": "RETURN",
 }
 tokens = [
     "FLOATLIT", "INTLIT", "ID", "STRINGLIT",
     "OR", "AND", "LEQ", "GEQ", "LT", "GT", "EQ", "NEQ",
-    "MINUS", "PLUS", "NOT", "COLON",
+    "MINUS", "PLUS", "NOT", "COLON", "INC", "DEC","PLUSEQ","DECEQ"
 ] + list(reserved.values())
 
 t_ignore = " \t"
@@ -60,8 +61,11 @@ def t_ID(t):
 
 
 def t_FLOATLIT(t):
-    r"([0-9]+\.[0-9]*|\.[0-9]+)"
-    t.value = float(t.value)
+    r"([0-9]+\.[0-9]*|\.[0-9]+)([fF])?"
+    txt = t.value
+    if txt[-1] in ("f","F"):
+        txt = txt[:-1]
+    t.value = float(txt)
     return t
 
 
@@ -83,6 +87,10 @@ t_GT    = r">"
 t_GEQ   = r">="
 t_EQ    = r"=="
 t_NEQ   = r"!="
+t_INC = r"\+\+"
+t_PLUSEQ = r"\+="
+t_DEC    = r"--"
+t_DECEQ = r"\-="
 t_MINUS = r"-"
 t_NOT   = r"!"
 t_PLUS  = r"\+"
@@ -99,11 +107,12 @@ def t_error(t):
 
 precedence = (
     ("nonassoc", "ELSE"),
-    ("right", "NOT", "UMINUS"),
+    ("right", "NOT", "UMINUS", "INC", "DEC"),
     ("left", "OR"),
     ("left", "AND"),
     ("nonassoc", "EQ", "NEQ"),
     ("nonassoc", "LT", "LEQ", "GT", "GEQ"),
+    ("left", "PLUSEQ", "DECEQ"),  
     ("left", "PLUS", "MINUS"),
     ("left", "*", "/", "%"),
 )
@@ -127,6 +136,7 @@ def p_functions(p):
     """
     functions : mainfunction functions
               | function functions
+              | function_prototype functions
               | empty
     """
     if len(p) == 3:
@@ -141,6 +151,13 @@ def p_return_statement(p):
     """
     p[0] = ReturnStatement(p[2])
 
+def p_function_prototype(p):
+    """
+    function_prototype : type ID "(" parameters ")" ";"
+    """
+    decl = FunctionDecl(p[1], p[2], p[4], [], [])
+    decl.is_proto = True
+    p[0] = decl
 
 def p_function(p):
     """
@@ -218,16 +235,33 @@ def p_declarations(p):
     else:
         p[0] = []
 
+def p_decl_no_semi(p):
+    """
+    decl_no_semi : type ID
+                  | type ID '=' expression
+    """
+    init = p[4] if len(p) == 5 else None
+    p[0] = Declaration(p[1], p[2], init)
 
 def p_declaration(p):
     """
     declaration : type ID ";"
                 | type ID '=' expression ';'
+                | CONST type ID ';'
+                | CONST type ID '=' expression ';'
     """
-    if len(p) == 4:
-        p[0] = Declaration(p[1], p[2])
+    if p[1] == "const":
+        #  CONST type ID    ...
+        typ      = p[2]
+        ident    = p[3]
+        init     = p[5] if len(p) == 6 else None
     else:
-        p[0] = Declaration(p[1], p[2], p[4])
+        #  type ID ...
+        typ      = p[1]
+        ident    = p[2]
+        init     = p[4] if len(p) == 5 else None
+
+    p[0] = Declaration(typ, ident, init)
 
 
 def p_type(p):
@@ -279,8 +313,23 @@ def p_block(p):
 def p_assignment_no_semi(p):
     """
     assignment_no_semi : ID '=' expression
+                      | ID PLUSEQ expression
+                      | ID DECEQ expression
+                      | ID INC
+                      | ID DEC
     """
-    p[0] = Assignment(p[1], p[3])
+    var = Variable(p[1])
+    if p[2] == '=':
+        rhs = p[3]
+    elif p[2] == '+=':
+        rhs = BinaryOp('+', var, p[3])
+    elif p[2] == '-=':
+        rhs = BinaryOp('-', var, p[3])
+    elif p[2] == '++':
+        rhs = BinaryOp('+', var, Literal(1, "INT"))
+    else:  # '--'
+        rhs = BinaryOp('-', var, Literal(1, "INT"))
+    p[0] = Assignment(p[1], rhs)
 
 
 def p_assignment(p):
@@ -311,7 +360,8 @@ def p_if_statement(p):
 
 def p_for_statement(p):
     """
-    for_statement : FOR '(' assignment_opt ';' expression_opt ';' assignment_opt ')' statement
+    for_statement : FOR '(' decl_no_semi ';' expression_opt ';' assignment_opt ')' statement
+                  | FOR '(' assignment_opt ';' expression_opt ';' assignment_opt ')' statement
     """
     p[0] = ForStatement(p[3], p[5], p[7], p[9])
 
@@ -484,13 +534,29 @@ def p_mul_op(p):
 def p_factor(p):
     """
     factor : unary_op factor
+           | INC factor
+           | DEC factor
            | primary
+           | postfix
     """
     if len(p) == 2:
         p[0] = p[1]
+    elif len(p) == 3 and p[1] in ('++', '--'):
+        name = p[2].name
+        op = '+' if p[1] == '++' else '-'
+        p[0] = Assignment(name, BinaryOp(op, p[2], Literal(1, "INT")))
     else:
         p[0] = UnaryOp(p[1], p[2])
 
+
+def p_postfix(p):
+    """
+    postfix : primary INC
+            | primary DEC
+    """
+    name = p[1].name  # asumimos que primary → Variable
+    op = '+' if p[2] == '++' else '-'
+    p[0] = Assignment(name, BinaryOp(op, p[1], Literal(1, "INT")))
 
 def p_unary_op(p):
     """unary_op : MINUS %prec UMINUS
@@ -530,43 +596,8 @@ def p_error(p):
 
 
 # %%
-data = """
-int perimetroCirculo(float r) {
-    float p = 2.0 * 3.14159 * r;
-    return (int)p;
-}
-int add(int a, int b) { return a + b; }
-int factorial(int n) {
-    if (n <= 1) return 1;
-    else return n * factorial(n - 1);
-}
-int main() {
-    int x = 3;
-    if (x > 0) { printf("if: x=%d\n", x); }
-    else        { printf("else: x=%d\n", x); }
-    int i = 0;
-    while (i < 2) {
-        printf("while: i=%d\n", i);
-        i = i + 1;
-    }
-    i = 0;
-    do {
-        printf("do-while: i=%d\n", i);
-        i = i + 1;
-    } while (i < 2);
-    for (i = 0; i < 2; i = i + 1) {
-        printf("for: i=%d\n", i);
-    }
-    switch (x) {
-        case 3: printf("switch: x==3\n"); break;
-        default: printf("switch: default\n");
-    }
-    printf("perimetro: %d\n", perimetroCirculo(5.0));
-    printf("add: %d\n", add(2,3));
-    printf("fact: %d\n", factorial(5));
-    return 0;
-}
-"""
+with open("test.c", 'r', encoding='utf-8') as f:
+        data = f.read()
 lexer = lex.lex()
 parser = yacc.yacc(start="program")
 ast = parser.parse(data)
@@ -587,7 +618,7 @@ class IRGenerator(Visitor):
         self.typemap = {
             "INT": ir.IntType(32),
             "BOOL": ir.IntType(1),
-            "FLOAT": ir.DoubleType(),
+            "FLOAT": ir.FloatType(),
             "CHAR": ir.IntType(8),
         }
         voidptr = ir.IntType(8).as_pointer()
@@ -613,22 +644,36 @@ class IRGenerator(Visitor):
         val = self.stack.pop()
         from_ty = val.type
         to_ty = self.typemap[node.target_type]
-        if isinstance(from_ty, ir.DoubleType) and isinstance(to_ty, ir.IntType):
+        if isinstance(from_ty, ir.FloatType) and isinstance(to_ty, ir.IntType):
             casted = self.builder.fptosi(val, to_ty)
-        elif isinstance(from_ty, ir.IntType) and isinstance(to_ty, ir.DoubleType):
+        elif isinstance(from_ty, ir.IntType) and isinstance(to_ty, ir.FloatType):
             casted = self.builder.sitofp(val, to_ty)
+        elif isinstance(from_ty, ir.DoubleType) and isinstance(to_ty, ir.FloatType):
+            casted = self.builder.fptrunc(val, to_ty)
+        elif isinstance(from_ty, ir.FloatType) and isinstance(to_ty, ir.DoubleType):
+            casted = self.builder.fpext(val, to_ty)
         else:
             casted = val
         self.stack.append(casted)
 
     def visit_program(self, node: Program):
         for fn in node.functions:
-            self.visit_function_decl(fn)
+            if getattr(fn, 'is_proto', False):
+                param_types = [self.typemap[t] for t,_ in fn.params]
+                fn_ty = ir.FunctionType(self.typemap[fn.ret_type], param_types)
+                ir.Function(self.module, fn_ty, name=fn.name)
+        for fn in node.functions:
+            if not getattr(fn, 'is_proto', False):
+                self.visit_function_decl(fn)
 
     def visit_function_decl(self, node: FunctionDecl):
         param_types = [self.typemap[t] for t, _ in node.params]
         fn_ty = ir.FunctionType(self.typemap[node.ret_type], param_types)
-        fn = ir.Function(self.module, fn_ty, name=node.name)
+        # fn = ir.Function(self.module, fn_ty, name=node.name)
+        if node.name in self.module.globals:
+            fn = self.module.get_global(node.name)
+        else:
+            fn = ir.Function(self.module, fn_ty, name=node.name)
 
         entry = fn.append_basic_block("entry")
         self.builder = ir.IRBuilder(entry)
@@ -645,7 +690,7 @@ class IRGenerator(Visitor):
         for stmt in node.statements:
             stmt.accept(self)
 
-        if not fn.blocks[-1].is_terminated:
+        if not self.builder.block.is_terminated:
             if node.ret_type == "INT":
                 self.builder.ret(ir.Constant(self.typemap["INT"], 0))
             else:
@@ -655,7 +700,7 @@ class IRGenerator(Visitor):
         ty = self.typemap[node.typ]
         alloca = self.builder.alloca(ty, name=node.identifier)
         self.symbols[node.identifier] = alloca
-        zero = ir.Constant(ty, 0.0 if isinstance(ty, ir.DoubleType) else 0)
+        zero = ir.Constant(ty, 0.0 if isinstance(ty, ir.FloatType) else 0)
         self.builder.store(zero, alloca)
         if node.initializer:
             node.initializer.accept(self)
@@ -676,13 +721,14 @@ class IRGenerator(Visitor):
         node.condition.accept(self)
         cond = self.stack.pop()
 
-        then_bb = self.func.append_basic_block("if.then")
-        else_bb = self.func.append_basic_block("if.else") if node.else_stmt else None
+        then_bb  = self.func.append_basic_block("if.then")
         merge_bb = self.func.append_basic_block("if.end")
 
         if node.else_stmt:
+            else_bb = self.func.append_basic_block("if.else")
             self.builder.cbranch(cond, then_bb, else_bb)
         else:
+            else_bb = merge_bb
             self.builder.cbranch(cond, then_bb, merge_bb)
 
         self.builder.position_at_start(then_bb)
@@ -713,18 +759,20 @@ class IRGenerator(Visitor):
         self.builder.position_at_start(whileExit)
 
     def visit_do_while_statement(self, node: DoWhileStatement):
-        doBody = self.func.append_basic_block("do.body")
-        doCond = self.func.append_basic_block("do.cond")
-        doExit = self.func.append_basic_block("do.exit")
-        self.builder.branch(doBody)
-        self.builder.position_at_start(doBody)
+        body_bb = self.func.append_basic_block("do.body")
+        cond_bb = self.func.append_basic_block("do.cond")
+        exit_bb = self.func.append_basic_block("do.exit")
+        self.builder.branch(body_bb)
+        self.builder.position_at_start(body_bb)
         node.body.accept(self)
-        self.builder.branch(doCond)
-        self.builder.position_at_start(doCond)
+        if not self.builder.block.is_terminated:
+            self.builder.branch(cond_bb)
+        self.builder.position_at_start(cond_bb)
         node.condition.accept(self)
         condVal = self.stack.pop()
-        self.builder.cbranch(condVal, doBody, doExit)
-        self.builder.position_at_start(doExit)
+        self.builder.cbranch(condVal, body_bb, exit_bb)
+        self.builder.position_at_start(exit_bb)
+
 
     def visit_for_statement(self, node: ForStatement):
         entryBB = self.builder.block
@@ -828,7 +876,7 @@ class IRGenerator(Visitor):
             zero = ir.Constant(v.type, 0)
             op = (
                 self.builder.fsub
-                if isinstance(v.type, ir.DoubleType)
+                if isinstance(v.type, ir.FloatType)
                 else self.builder.sub
             )
             self.stack.append(op(zero, v))
@@ -842,7 +890,7 @@ class IRGenerator(Visitor):
         rhs = self.stack.pop()
         lhs = self.stack.pop()
 
-        is_float = isinstance(lhs.type, ir.DoubleType)
+        is_float = isinstance(lhs.type, ir.FloatType)
 
         if node.op == "+":
             instr = self.builder.fadd if is_float else self.builder.add
@@ -902,7 +950,10 @@ class IRGenerator(Visitor):
             args = [ptr]
             for arg in node.arguments[1:]:
                 arg.accept(self)
-                args.append(self.stack.pop())
+                v = self.stack.pop()
+                if isinstance(v.type, ir.FloatType):
+                    v = self.builder.fpext(v, ir.DoubleType())
+                args.append(v)
             call = self.builder.call(self.printf, args)
             self.stack.append(call)
         else:

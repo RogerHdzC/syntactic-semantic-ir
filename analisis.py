@@ -545,6 +545,14 @@ def p_error(p):
 
 # %%
 data = """
+int factorial(int n) {
+    if (n <= 1) {
+        return 1;
+    } else {
+        return n * factorial(n - 1);
+    }
+}
+
 int add(int a, int b) {
   int result;
   result = a + b;
@@ -555,6 +563,7 @@ int main() {
     int x;
     int y;
     int i;
+    int result;
     bool flag;
     flag = -flag;
     flag = !flag ;
@@ -569,6 +578,9 @@ int main() {
         case 2: x = x + 2; 
         default: x = x + 3;
     }
+    result = factorial(x);
+    
+    return 0;
 }
 """
 lexer = lex.lex()
@@ -662,12 +674,14 @@ class IRGenerator(Visitor):
 
         self.builder.position_at_start(then_bb)
         node.then_stmt.accept(self)
-        self.builder.branch(merge_bb)
+        if not self.builder.block.is_terminated:
+            self.builder.branch(merge_bb)
 
         if node.else_stmt:
             self.builder.position_at_start(else_bb)
             node.else_stmt.accept(self)
-            self.builder.branch(merge_bb)
+            if not self.builder.block.is_terminated:
+                self.builder.branch(merge_bb)
 
         self.builder.position_at_start(merge_bb)
 
@@ -771,14 +785,7 @@ class IRGenerator(Visitor):
                 self.builder.branch(end_block)
 
         self.builder.position_at_start(end_block)
-        if self.func.function_type.return_type == ir.IntType(32):
-            self.builder.ret(ir.Constant(ir.IntType(32), 0))
-        elif self.func.function_type.return_type == ir.DoubleType():
-            self.builder.ret(ir.Constant(ir.DoubleType(), 0.0))
-        elif self.func.function_type.return_type == ir.IntType(1):
-            self.builder.ret(ir.Constant(ir.IntType(1), 0))
-        else:
-            self.builder.ret_void()
+
 
     def visit_case_statements(self, statements):
         for stmt in statements:
@@ -894,7 +901,7 @@ class IRGenerator(Visitor):
 ast = parser.parse(data)
 visitor = IRGenerator(module)
 ast.accept(visitor)
-# print(module)
+print(module)
 # %%
 import runtime as rt
 from ctypes import CFUNCTYPE, c_int

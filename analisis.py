@@ -27,32 +27,61 @@ from arbol import (
     CallExpr,
     CallStatement,
     ReturnStatement,
-    Cast
+    Cast,
 )
 
 # %%
 literals = ["*", "/", "%", "(", ")", "{", "}", ";", "=", ":", ","]
 reserved = {
-    "while": "WHILE", "if": "IF", "else": "ELSE",
-    "int": "INT", "bool": "BOOL", "float": "FLOAT", "char": "CHAR",
-    "main": "MAIN", "do": "DO", "for": "FOR",
+    "while": "WHILE",
+    "if": "IF",
+    "else": "ELSE",
+    "int": "INT",
+    "bool": "BOOL",
+    "float": "FLOAT",
+    "char": "CHAR",
+    "main": "MAIN",
+    "do": "DO",
+    "for": "FOR",
     "const": "CONST",
-    "switch": "SWITCH", "case": "CASE", "default": "DEFAULT",
-    "break": "BREAK", "return": "RETURN",
+    "switch": "SWITCH",
+    "case": "CASE",
+    "default": "DEFAULT",
+    "break": "BREAK",
+    "return": "RETURN",
 }
 tokens = [
-    "FLOATLIT", "INTLIT", "ID", "STRINGLIT",
-    "OR", "AND", "LEQ", "GEQ", "LT", "GT", "EQ", "NEQ",
-    "MINUS", "PLUS", "NOT", "COLON", "INC", "DEC","PLUSEQ","DECEQ"
+    "FLOATLIT",
+    "INTLIT",
+    "ID",
+    "STRINGLIT",
+    "OR",
+    "AND",
+    "LEQ",
+    "GEQ",
+    "LT",
+    "GT",
+    "EQ",
+    "NEQ",
+    "MINUS",
+    "PLUS",
+    "NOT",
+    "COLON",
+    "INC",
+    "DEC",
+    "PLUSEQ",
+    "DECEQ",
 ] + list(reserved.values())
 
 t_ignore = " \t"
 t_ignore_COMMENT = r"//.*"  # ignora comentarios de línea
 
+
 def t_STRINGLIT(t):
     r'"([^"\\]|\\.)*"'
     t.value = t.value[1:-1]  # elimina comillas
     return t
+
 
 def t_ID(t):
     r"[a-zA-Z_][a-zA-Z_0-9]*"
@@ -63,7 +92,7 @@ def t_ID(t):
 def t_FLOATLIT(t):
     r"([0-9]+\.[0-9]*|\.[0-9]+)([fF])?"
     txt = t.value
-    if txt[-1] in ("f","F"):
+    if txt[-1] in ("f", "F"):
         txt = txt[:-1]
     t.value = float(txt)
     return t
@@ -79,28 +108,28 @@ def t_newline(t):
     r"\n+"
     t.lexer.lineno += len(t.value)
 
-t_OR    = r"\|\|"
-t_AND   = r"&&"
-t_LT    = r"<"
-t_LEQ   = r"<="
-t_GT    = r">"
-t_GEQ   = r">="
-t_EQ    = r"=="
-t_NEQ   = r"!="
+
+t_OR = r"\|\|"
+t_AND = r"&&"
+t_LT = r"<"
+t_LEQ = r"<="
+t_GT = r">"
+t_GEQ = r">="
+t_EQ = r"=="
+t_NEQ = r"!="
 t_INC = r"\+\+"
 t_PLUSEQ = r"\+="
-t_DEC    = r"--"
+t_DEC = r"--"
 t_DECEQ = r"\-="
 t_MINUS = r"-"
-t_NOT   = r"!"
-t_PLUS  = r"\+"
+t_NOT = r"!"
+t_PLUS = r"\+"
 t_COLON = r":"
 
 
 def t_error(t):
     print(f"Illegal character '{t.value[0]}'")
     t.lexer.skip(1)
-
 
 
 # %%
@@ -112,7 +141,7 @@ precedence = (
     ("left", "AND"),
     ("nonassoc", "EQ", "NEQ"),
     ("nonassoc", "LT", "LEQ", "GT", "GEQ"),
-    ("left", "PLUSEQ", "DECEQ"),  
+    ("left", "PLUSEQ", "DECEQ"),
     ("left", "PLUS", "MINUS"),
     ("left", "*", "/", "%"),
 )
@@ -151,6 +180,7 @@ def p_return_statement(p):
     """
     p[0] = ReturnStatement(p[2])
 
+
 def p_function_prototype(p):
     """
     function_prototype : type ID "(" parameters ")" ";"
@@ -158,6 +188,7 @@ def p_function_prototype(p):
     decl = FunctionDecl(p[1], p[2], p[4], [], [])
     decl.is_proto = True
     p[0] = decl
+
 
 def p_function(p):
     """
@@ -235,6 +266,7 @@ def p_declarations(p):
     else:
         p[0] = []
 
+
 def p_decl_no_semi(p):
     """
     decl_no_semi : type ID
@@ -242,6 +274,7 @@ def p_decl_no_semi(p):
     """
     init = p[4] if len(p) == 5 else None
     p[0] = Declaration(p[1], p[2], init)
+
 
 def p_declaration(p):
     """
@@ -252,14 +285,14 @@ def p_declaration(p):
     """
     if p[1] == "const":
         #  CONST type ID    ...
-        typ      = p[2]
-        ident    = p[3]
-        init     = p[5] if len(p) == 6 else None
+        typ = p[2]
+        ident = p[3]
+        init = p[5] if len(p) == 6 else None
     else:
         #  type ID ...
-        typ      = p[1]
-        ident    = p[2]
-        init     = p[4] if len(p) == 5 else None
+        typ = p[1]
+        ident = p[2]
+        init = p[4] if len(p) == 5 else None
 
     p[0] = Declaration(typ, ident, init)
 
@@ -319,16 +352,16 @@ def p_assignment_no_semi(p):
                       | ID DEC
     """
     var = Variable(p[1])
-    if p[2] == '=':
+    if p[2] == "=":
         rhs = p[3]
-    elif p[2] == '+=':
-        rhs = BinaryOp('+', var, p[3])
-    elif p[2] == '-=':
-        rhs = BinaryOp('-', var, p[3])
-    elif p[2] == '++':
-        rhs = BinaryOp('+', var, Literal(1, "INT"))
+    elif p[2] == "+=":
+        rhs = BinaryOp("+", var, p[3])
+    elif p[2] == "-=":
+        rhs = BinaryOp("-", var, p[3])
+    elif p[2] == "++":
+        rhs = BinaryOp("+", var, Literal(1, "INT"))
     else:  # '--'
-        rhs = BinaryOp('-', var, Literal(1, "INT"))
+        rhs = BinaryOp("-", var, Literal(1, "INT"))
     p[0] = Assignment(p[1], rhs)
 
 
@@ -541,9 +574,9 @@ def p_factor(p):
     """
     if len(p) == 2:
         p[0] = p[1]
-    elif len(p) == 3 and p[1] in ('++', '--'):
+    elif len(p) == 3 and p[1] in ("++", "--"):
         name = p[2].name
-        op = '+' if p[1] == '++' else '-'
+        op = "+" if p[1] == "++" else "-"
         p[0] = Assignment(name, BinaryOp(op, p[2], Literal(1, "INT")))
     else:
         p[0] = UnaryOp(p[1], p[2])
@@ -555,12 +588,13 @@ def p_postfix(p):
             | primary DEC
     """
     name = p[1].name  # asumimos que primary → Variable
-    op = '+' if p[2] == '++' else '-'
+    op = "+" if p[2] == "++" else "-"
     p[0] = Assignment(name, BinaryOp(op, p[1], Literal(1, "INT")))
+
 
 def p_unary_op(p):
     """unary_op : MINUS %prec UMINUS
-                | NOT   %prec NOT"""
+    | NOT   %prec NOT"""
     p[0] = p[1]
 
 
@@ -574,7 +608,11 @@ def p_primary(p):
             | ID
             | '(' expression ')'
     """
-    if len(p) == 5 and isinstance(p[2], str) and p[2] in ("INT","FLOAT","BOOL","CHAR"):
+    if (
+        len(p) == 5
+        and isinstance(p[2], str)
+        and p[2] in ("INT", "FLOAT", "BOOL", "CHAR")
+    ):
         p[0] = Cast(p[2], p[4])
     elif len(p) == 5 and p.slice[1].type == "ID":
         p[0] = CallExpr(p[1], p[3])
@@ -591,13 +629,14 @@ def p_primary(p):
     else:
         p[0] = p[2]
 
+
 def p_error(p):
     print(f"Syntax error at '{p.value}'")
 
 
 # %%
-with open("test.c", 'r', encoding='utf-8') as f:
-        data = f.read()
+with open("test.c", "r", encoding="utf-8") as f:
+    data = f.read()
 lexer = lex.lex()
 parser = yacc.yacc(start="program")
 ast = parser.parse(data)
@@ -625,7 +664,7 @@ class IRGenerator(Visitor):
         printf_ty = ir.FunctionType(ir.IntType(32), [voidptr], var_arg=True)
         self.printf = ir.Function(module, printf_ty, name="printf")
         self.strings = {}
-    
+
     def _get_str_constant(self, text):
         if text in self.strings:
             return self.strings[text]
@@ -637,7 +676,7 @@ class IRGenerator(Visitor):
         gv.initializer = const
         self.strings[text] = gv
         return gv
-    
+
     def visit_cast(self, node: Cast):
         # primero baja el valor
         node.expr.accept(self)
@@ -658,12 +697,12 @@ class IRGenerator(Visitor):
 
     def visit_program(self, node: Program):
         for fn in node.functions:
-            if getattr(fn, 'is_proto', False):
-                param_types = [self.typemap[t] for t,_ in fn.params]
+            if getattr(fn, "is_proto", False):
+                param_types = [self.typemap[t] for t, _ in fn.params]
                 fn_ty = ir.FunctionType(self.typemap[fn.ret_type], param_types)
                 ir.Function(self.module, fn_ty, name=fn.name)
         for fn in node.functions:
-            if not getattr(fn, 'is_proto', False):
+            if not getattr(fn, "is_proto", False):
                 self.visit_function_decl(fn)
 
     def visit_function_decl(self, node: FunctionDecl):
@@ -721,7 +760,7 @@ class IRGenerator(Visitor):
         node.condition.accept(self)
         cond = self.stack.pop()
 
-        then_bb  = self.func.append_basic_block("if.then")
+        then_bb = self.func.append_basic_block("if.then")
         merge_bb = self.func.append_basic_block("if.end")
 
         if node.else_stmt:
@@ -772,7 +811,6 @@ class IRGenerator(Visitor):
         condVal = self.stack.pop()
         self.builder.cbranch(condVal, body_bb, exit_bb)
         self.builder.position_at_start(exit_bb)
-
 
     def visit_for_statement(self, node: ForStatement):
         entryBB = self.builder.block
@@ -846,7 +884,6 @@ class IRGenerator(Visitor):
                 self.builder.branch(end_block)
 
         self.builder.position_at_start(end_block)
-
 
     def visit_case_statements(self, statements):
         for stmt in statements:
@@ -944,7 +981,7 @@ class IRGenerator(Visitor):
         if node.name == "printf":
             fmt_lit = node.arguments[0]
             assert isinstance(fmt_lit, Literal) and fmt_lit.type == "STRING"
-            fmt_text = fmt_lit.value + "\0"
+            fmt_text = fmt_lit.value + "\n\0"
             gv = self._get_str_constant(fmt_text)
             ptr = self.builder.bitcast(gv, ir.IntType(8).as_pointer())
             args = [ptr]
@@ -986,6 +1023,5 @@ cfunc = CFUNCTYPE(c_int)(func_ptr)
 res = cfunc()
 print("main() =", res)
 print(mod)
-
 
 # %%
